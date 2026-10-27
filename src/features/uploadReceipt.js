@@ -4,8 +4,9 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { userState } from '../data/userState.js'
 import { appendOrder } from '../utils/utils_order.js'
-import { downloadMediaMessage } from 'atexovi-baileys'
+import { downloadMediaMessage } from '@whiskeysockets/baileys'
 import { respondToAdminAndUser } from '../utils/orderResponse.js'
+import { STORE_URL } from '../data/deepgmart.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -14,7 +15,7 @@ export async function askReceiptUpload(sock, from) {
   userState.set(from, { step: 'waiting_receipt' })
   await sock.sendMessage(from, {
     text: '📤 Please upload your payment receipt (image). To speed up the process, you can include your full address in the same message.',
-    footer: '© Tempe Crispy Store — Atex Ovi',
+    footer: `© DeepGmart Singapore • ${STORE_URL}`,
   })
 }
 

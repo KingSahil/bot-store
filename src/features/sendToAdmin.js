@@ -3,11 +3,8 @@ import fs from 'fs'
 import dotenv from 'dotenv'
 dotenv.config()
 
-const PRODUCT_NAMES = {
-  tempe_original: 'Original',
-  tempe_balado: 'Balado',
-  tempe_pedas: 'Pedas',
-}
+import { getProductBySlug } from '../data/deepgmart.js'
+
 
 export async function sendToAdmin(sock, userJid, filePath = null, order = null, userMessage = '') {
   const admin = process.env.ADMIN_JID
@@ -17,7 +14,8 @@ export async function sendToAdmin(sock, userJid, filePath = null, order = null, 
   }
 
   const cleanNumber = userJid.replace('@s.whatsapp.net', '')
-  const productName = PRODUCT_NAMES[order?.product] || order?.product || 'Not specified'
+  const productInfo = order?.product ? getProductBySlug(order.product) : null
+  const productName = productInfo ? `${productInfo.title} (${productInfo.price})` : (order?.product || 'Not specified')
 
   if (!filePath && userMessage) {
     const addressMsg = [

@@ -1,64 +1,66 @@
 // src/features/orderHandler.js
-import fs from 'fs'
-import path from 'path'
-import { fileURLToPath } from 'url'
+import { getProductBySlug, getProductImageBuffer, STORE_URL } from '../data/deepgmart.js'
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
-
-const PRODUCTS = {
-  tempe_original: {
-    id: 'tempe_original',
-    title: 'Tempe Crispy Original',
-    price: 'Rp10.000',
-    desc: 'Crispy and savory — a timeless classic loved by everyone.',
-    image: path.join(__dirname, '../assets/tempe-original.jpg'),
-  },
-  tempe_balado: {
-    id: 'tempe_balado',
-    title: 'Tempe Crispy Balado',
-    price: 'Rp12.000',
-    desc: 'Sweet and spicy Balado flavor that will keep you coming back for more.',
-    image: path.join(__dirname, '../assets/tempe-balado.jpg'),
-  },
-  tempe_pedas: {
-    id: 'tempe_pedas',
-    title: 'Tempe Crispy Pedas',
-    price: 'Rp12.000',
-    desc: 'For true spice lovers — a perfect mix of heat and crunch.',
-    image: path.join(__dirname, '../assets/tempe-pedas.jpg'),
-  },
-}
-
-export function getProduct(productId) {
-  return PRODUCTS[productId] || null
-}
-
-export async function showProductDetail(sock, from, productId) {
-  const product = getProduct(productId)
+export async function showProductDetail(sock, from, productId, quotedMsg = null) {
+  const product = getProductBySlug(productId)
   if (!product) {
-    await sock.sendMessage(from, { text: 'Product not found.' })
+    await sock.sendMessage(from, { text: '❌ Product not found. Reply *menu* to see available products.' }, quotedMsg ? { quoted: quotedMsg } : {})
     return
   }
 
-  const buffer = fs.existsSync(product.image) ? fs.readFileSync(product.image) : null
-  const caption = `*${product.title}*\nPrice: ${product.price}\n\n${product.desc}\n\nPress the "Buy Now" button to continue.`
+  const buffer = getProductImageBuffer(product.imageRelative)
 
-  const buyButton = [{ buttonId: 'buy_now', buttonText: { displayText: 'Buy Now' }, type: 1 }]
+  const caption = 
+    `🛍️ *${product.title}*\n` +
+    `💰 Price: *${product.price} SGD*\n` +
+    `📁 Category: *${(product.dept || 'Grocery').toUpperCase()}*\n\n` +
+    `📝 ${product.desc}\n\n` +
+    `👇 *Tap "Buy Now" to proceed to checkout:*`
 
-  if (buffer) {
-    await sock.sendMessage(from, {
-      image: buffer,
-      caption,
-      footer: '© Tempe Crispy Store — Atex Ovi',
-      buttons: buyButton,
-      headerType: 4,
-    })
-  } else {
-    await sock.sendMessage(from, {
-      text: caption,
-      footer: '© Tempe Crispy Store — Atex Ovi',
-      buttons: buyButton,
-    })
+  const message = {
+    footer: `© DeepGmart Singapore • ${STORE_URL}`,
+    interactiveButtons: [
+      {
+        name: 'quick_reply',
+        buttonParamsJson: JSON.stringify({
+          display_text: '🛒 Buy / Order Now',
+          id: 'buy_now',
+        }),
+      },
+      {
+        name: 'cta_url',
+        buttonParamsJson: JSON.stringify({
+          display_text: '🌐 View in Web Shop',
+          url: product.url,
+        }),
+      },
+      {
+        name: 'quick_reply',
+        buttonParamsJson: JSON.stringify({
+          display_text: '📋 Back to Menu',
+          id: 'menu',
+        }),
+      },
+    ],
+  }
+
+  const options = quotedMsg ? { quoted: quotedMsg } : {}
+
+  try {
+    if (buffer) {
+      await sock.sendMessage(from, {
+        image: buffer,
+        caption,
+        ...message,
+      }, options)
+    } else {
+      await sock.sendMessage(from, {
+        text: caption,
+        ...message,
+      }, options)
+    }
+    console.log(`✅ Sent interactive product card (${product.title}) to:`, from)
+  } catch (err) {
+    console.error('[showProductDetail Error]', err)
   }
 }

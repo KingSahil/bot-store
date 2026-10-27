@@ -1,14 +1,16 @@
 #!/usr/bin/env node
-import { makeWASocket, useMultiFileAuthState, DisconnectReason } from 'atexovi-baileys';
+import { makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestWaWebVersion, makeCacheableSignalKeyStore, jidNormalizedUser } from '@whiskeysockets/baileys';
+import NodeCache from 'node-cache';
 import pino from 'pino';
 import fs from 'fs';
 import path from 'path';
-import inquirer from 'inquirer';
 import chalk from 'chalk';
 import figlet from 'figlet';
 import dotenv from 'dotenv';
+import qrcode from 'qrcode-terminal';
 import { handler } from './src/handler.js';
-import { wrapSendMessageGlobally } from './src/utils/typing.js';
+import { wrapSendMessageGlobally, botSentMessageIds, storeMessage, messageStore } from './src/utils/typing.js';
+import { resolveLidToPn } from './src/utils/resolveLid.js';
 
 dotenv.config({ debug: false });
 
@@ -41,51 +43,52 @@ const FILTER_PATTERNS = [
   'rootKey:'
 ];
 
-process.stdout.write = function(chunk, encoding, callback) {
+process.stdout.write = function (chunk, encoding, callback) {
   const str = chunk.toString();
   const shouldFilter = FILTER_PATTERNS.some(pattern => str.includes(pattern));
-  
+
   if (shouldFilter) {
     if (str.includes('Closing open session')) {
       const cleanMsg = '🔄 Signal Protocol: Updating encryption session...\n';
       return originalStdoutWrite.call(this, Buffer.from(cleanMsg), encoding, callback);
     }
-    
+
     if (typeof callback === 'function') callback();
     return true;
   }
-  
+
   return originalStdoutWrite.call(this, chunk, encoding, callback);
 };
 
-console.error = function(...args) {
+console.error = function (...args) {
   const msg = args.join(' ');
-  
+
   if (FILTER_PATTERNS.some(pattern => msg.includes(pattern))) {
     if (msg.includes('Bad MAC')) {
       originalLog(chalk.yellow('🔒 Signal Protocol: Updating encryption session...'));
     }
     return;
   }
-  
+
   originalError.apply(console, args);
 };
 
-console.log = function(...args) {
+console.log = function (...args) {
   const msg = args.join(' ');
-  
+
   if (FILTER_PATTERNS.some(pattern => msg.includes(pattern))) {
     return;
   }
-  
+
   originalLog.apply(console, args);
 };
 
 const authDir = path.join(process.cwd(), 'session');
+const msgRetryCounterCache = new NodeCache();
 
 function centerText(text) {
   const lines = text.split('\n');
-  const width = process.stdout.columns;
+  const width = process.stdout.columns || 80;
   return lines
     .map(line => {
       const pad = Math.max(0, Math.floor((width - line.length) / 2));
@@ -94,8 +97,13 @@ function centerText(text) {
     .join('\n');
 }
 
+let isFirstStart = true;
+
 function showBanner() {
-  console.clear();
+  if (isFirstStart) {
+    console.clear();
+    isFirstStart = false;
+  }
   const text = figlet.textSync('Bot - Store', { font: 'Slant' });
   console.log(chalk.cyanBright(centerText(text)));
 
@@ -107,78 +115,118 @@ function showBanner() {
 
 async function startBot() {
   showBanner();
+
   const { state, saveCreds } = await useMultiFileAuthState(authDir);
+  const { version } = await fetchLatestWaWebVersion().catch(() => ({ version: [2, 3000, 1051853186] }));
+
   const sock = makeWASocket({
-    auth: state,
+    version,
+    auth: {
+      creds: state.creds,
+      keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'silent' })),
+    },
     logger: pino({ level: 'silent' }),
+    msgRetryCounterCache,
+    getMessage: async (key) => {
+      if (key?.id && messageStore.has(key.id)) {
+        return messageStore.get(key.id);
+      }
+      return undefined;
+    },
   });
 
   wrapSendMessageGlobally(sock);
 
   sock.ev.on('connection.update', async (update) => {
-    const { connection, lastDisconnect } = update;
+    const { connection, lastDisconnect, qr } = update;
+
+    if (qr) {
+      console.log(chalk.cyanBright('\n📷 Scan this QR code with WhatsApp:\n'));
+      qrcode.generate(qr, { small: true });
+      console.log(chalk.yellowBright('📱 Open WhatsApp → Settings (or ⋮) → Linked Devices → Link a Device\n'));
+    }
 
     if (connection === 'open') {
-      console.log(chalk.greenBright('✅ Connected to WhatsApp!'));
-      console.log(chalk.cyan(`👤 User: ${sock.user?.id || 'Unknown'}`));
+      const storeUrl = process.env.STORE_URL || 'https://www.deepglobal.com.sg/shop';
+      console.log(chalk.greenBright('\n🎉 DeepGmart Bot successfully connected to WhatsApp!'));
+      console.log(chalk.cyan(`👤 Account: ${sock.user?.id || 'Unknown'}`));
+      console.log(chalk.green(`🛒 Store: DeepGmart Singapore (${storeUrl})`));
+      console.log(chalk.green('🌐 Public Store Mode: Active (all incoming messages will receive interactive menu).\n'));
     } else if (connection === 'close') {
-      const reason = lastDisconnect?.error?.output?.statusCode;
-      const shouldReconnect = reason !== DisconnectReason.loggedOut;
-      if (shouldReconnect) {
-        console.log(chalk.yellow('🔁 Connection lost. Reconnecting...'));
-        startBot();
+      const statusCode = lastDisconnect?.error?.output?.statusCode;
+      const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+
+      if (statusCode === DisconnectReason.loggedOut) {
+        console.log(chalk.red('❌ Device logged out. Clearing session...'));
+        if (fs.existsSync(authDir)) {
+          fs.rmSync(authDir, { recursive: true, force: true });
+        }
+        sock.ev.removeAllListeners();
+        console.log(chalk.yellow('Please restart the bot to scan a new QR code.'));
+        process.exit(0);
+      } else if (shouldReconnect) {
+        console.log(chalk.yellow(`🔁 Connection closed (${statusCode || 'network'}). Reconnecting...`));
+        sock.ev.removeAllListeners();
+        setTimeout(startBot, 2000);
       } else {
-        console.log(chalk.red('❌ Invalid session. Please delete the session folder and try again.'));
+        console.log(chalk.red(`❌ Connection closed permanently (${statusCode}).`));
       }
     }
   });
 
   sock.ev.on('creds.update', saveCreds);
-  
-  sock.ev.on('messages.upsert', m => {
-    const msg = m.messages?.[0];
-    if (!msg || msg.key.fromMe) return;
 
-    console.log(chalk.blueBright('💬 Incoming message from:'), msg.key.remoteJid);
-    console.log(chalk.magenta('📨 Message type:'), Object.keys(msg.message || {}));
+  sock.ev.on('messages.upsert', async m => {
+    for (const msg of m.messages || []) {
+      if (!msg || !msg.message) continue;
 
-    try { handler(sock, msg); } catch (err) {
-      console.error(chalk.red('[Handler Error]'), err);
-    }
-  });
+      // Save message to store for retry support
+      if (msg.key?.id && msg.message) {
+        storeMessage(msg.key.id, msg.message);
+      }
 
-  const files = fs.readdirSync(authDir).filter(f => f.endsWith('.json'));
-  if (files.length === 0) {
-    let waNumber;
-    try {
-      const response = await inquirer.prompt([
-        {
-          type: 'input',
-          name: 'waNumber',
-          message: chalk.cyanBright('📱 Enter your WhatsApp number (without +):'),
-          validate: (input) => /^\d{8,}$/.test(input) ? true : '⚠️ Invalid number.',
-        },
-      ]);
-      waNumber = response.waNumber;
-    } catch (err) {
-      if (err.name === 'ExitPromptError') {
-        console.log(chalk.red('\n⚠️ Prompt canceled by user. Exiting...'));
-        process.exit(0);
-      } else {
-        throw err;
+      // Ignore protocol, sync, reaction, and key distribution messages
+      if (
+        msg.message.protocolMessage ||
+        msg.message.senderKeyDistributionMessage ||
+        msg.message.reactionMessage
+      ) {
+        continue;
+      }
+
+      // Ignore outgoing messages sent by the bot account (fromMe)
+      if (msg.key.fromMe) continue;
+
+      // Ignore bot's own sent messages to prevent reply loops
+      if (botSentMessageIds.has(msg.key.id)) continue;
+
+      const rawFrom = msg.key.remoteJid;
+      if (!rawFrom || rawFrom === 'status@broadcast' || rawFrom.endsWith('@g.us')) continue;
+
+      // Resolve LID to the user's real phone number JID
+      const from = resolveLidToPn(rawFrom);
+
+      const userText = (
+        msg.message?.conversation ||
+        msg.message?.extendedTextMessage?.text ||
+        msg.message?.imageMessage?.caption ||
+        ''
+      ).trim();
+
+      console.log(
+        chalk.blueBright('💬 Incoming message from:'),
+        from,
+        rawFrom !== from ? chalk.gray(`(LID: ${rawFrom})`) : '',
+        chalk.gray(userText ? `"${userText}"` : '')
+      );
+
+      try {
+        await handler(sock, msg, from);
+      } catch (err) {
+        console.error(chalk.red('[Handler Error]'), err);
       }
     }
-  
-    try {
-      const code = await sock.requestPairingCode(waNumber);
-      console.log(chalk.greenBright('\n✅ Pairing Code Found!'));
-      console.log(chalk.yellowBright('📌 Code:'), chalk.bold.magenta(code));
-      console.log(chalk.cyan('📱 On WhatsApp: Linked Devices → Link a Device'));
-      console.log(chalk.greenBright('⏳ Waiting for automatic connection...'));
-    } catch (error) {
-      console.error(chalk.red('❌ Error requesting pairing code:'), error);
-    }
-  }
+  });
 }
 
 startBot();

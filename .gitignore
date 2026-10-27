@@ -7,6 +7,14 @@ node_modules/
 !.env.example
 
 # =========================
+# 🔐 WhatsApp Auth & Session
+# =========================
+session/
+session*/
+auth_info/
+
+
+# =========================
 # 🧩 Cache & Build Files
 # =========================
 dist/
