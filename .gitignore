@@ -44,3 +44,6 @@ src/data/userState.js
 *.bak
 src/data/shop-state.json
 src/data/shop-state.json.tmp
+
+# Screenshots attached to Codex chats
+.codex-remote-attachments/
