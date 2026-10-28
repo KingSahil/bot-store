@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { startPaymentMonitor } from './src/features/paymentMonitor.js';
 import { makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestWaWebVersion, makeCacheableSignalKeyStore, jidNormalizedUser } from '@whiskeysockets/baileys';
 import NodeCache from 'node-cache';
 import pino from 'pino';
@@ -10,6 +11,7 @@ import dotenv from 'dotenv';
 import qrcode from 'qrcode-terminal';
 import { handler } from './src/handler.js';
 import { wrapSendMessageGlobally, botSentMessageIds, storeMessage, messageStore } from './src/utils/typing.js';
+import { acquireSessionGuard, reconnectDelay } from './src/utils/connectionGuard.js';
 import { resolveLidToPn } from './src/utils/resolveLid.js';
 
 dotenv.config({ debug: false });
@@ -98,6 +100,13 @@ function centerText(text) {
 }
 
 let isFirstStart = true;
+let activeSocket = null;
+let stopPaymentMonitor = () => {};
+let reconnectTimer = null;
+let starting = false;
+let reconnectAttempt = 0;
+let shuttingDown = false;
+let saveActiveCreds = null;
 
 function showBanner() {
   if (isFirstStart) {
@@ -114,11 +123,16 @@ function showBanner() {
 }
 
 async function startBot() {
+  if (starting || shuttingDown) return;
+  starting = true;
+  try {
   showBanner();
 
   const { state, saveCreds } = await useMultiFileAuthState(authDir);
+  saveActiveCreds = saveCreds;
   const { version } = await fetchLatestWaWebVersion().catch(() => ({ version: [2, 3000, 1051853186] }));
 
+  if (shuttingDown) return;
   const sock = makeWASocket({
     version,
     auth: {
@@ -135,6 +149,8 @@ async function startBot() {
     },
   });
 
+  activeSocket = sock;
+  let closed = false;
   wrapSendMessageGlobally(sock);
 
   sock.ev.on('connection.update', async (update) => {
@@ -146,35 +162,38 @@ async function startBot() {
       console.log(chalk.yellowBright('📱 Open WhatsApp → Settings (or ⋮) → Linked Devices → Link a Device\n'));
     }
 
+    if (activeSocket !== sock || closed || shuttingDown) return;
     if (connection === 'open') {
+      stopPaymentMonitor();
+      stopPaymentMonitor = startPaymentMonitor(sock, { onError: message => console.error(message) });
+      reconnectAttempt = 0;
       const storeUrl = process.env.STORE_URL || 'https://www.deepglobal.com.sg/shop';
       console.log(chalk.greenBright('\n🎉 DeepGmart Bot successfully connected to WhatsApp!'));
       console.log(chalk.cyan(`👤 Account: ${sock.user?.id || 'Unknown'}`));
       console.log(chalk.green(`🛒 Store: DeepGmart Singapore (${storeUrl})`));
       console.log(chalk.green('🌐 Public Store Mode: Active (all incoming messages will receive interactive menu).\n'));
     } else if (connection === 'close') {
+      closed = true;
+      stopPaymentMonitor();
       const statusCode = lastDisconnect?.error?.output?.statusCode;
-      const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-
-      if (statusCode === DisconnectReason.loggedOut) {
-        console.log(chalk.red('❌ Device logged out. Clearing session...'));
-        if (fs.existsSync(authDir)) {
-          fs.rmSync(authDir, { recursive: true, force: true });
+      const delay = reconnectDelay(statusCode, reconnectAttempt++);
+      sock.ev.removeAllListeners();
+      activeSocket = null;
+      try { sock.end(undefined); } catch {}
+      if (delay === null) {
+        if (statusCode === DisconnectReason.connectionReplaced) {
+          console.error('WhatsApp replaced this connection (440). Check for another bot using the same linked session, including on another computer. Automatic reconnect stopped to prevent a conflict loop. Session files are preserved.');
+        } else {
+          console.error(`WhatsApp requires attention (${statusCode}). Automatic reconnect stopped. Session files are preserved; check Linked Devices before relinking.`);
         }
-        sock.ev.removeAllListeners();
-        console.log(chalk.yellow('Please restart the bot to scan a new QR code.'));
-        process.exit(0);
-      } else if (shouldReconnect) {
-        console.log(chalk.yellow(`🔁 Connection closed (${statusCode || 'network'}). Reconnecting...`));
-        sock.ev.removeAllListeners();
-        setTimeout(startBot, 2000);
-      } else {
-        console.log(chalk.red(`❌ Connection closed permanently (${statusCode}).`));
+        process.exit(1);
       }
+      scheduleReconnect(delay, statusCode);
+
     }
   });
 
-  sock.ev.on('creds.update', saveCreds);
+  sock.ev.on('creds.update', () => saveCreds().catch(error => console.error('Unable to save WhatsApp credentials:', error.message)));
 
   sock.ev.on('messages.upsert', async m => {
     for (const msg of m.messages || []) {
@@ -227,6 +246,42 @@ async function startBot() {
       }
     }
   });
+  } catch (error) {
+    stopPaymentMonitor();
+    if (activeSocket) {
+      activeSocket.ev.removeAllListeners();
+      try { activeSocket.end(undefined); } catch {}
+      activeSocket = null;
+    }
+    console.error('Unable to connect to WhatsApp:', error.message);
+    scheduleReconnect(reconnectDelay(undefined, reconnectAttempt++), 'startup');
+  } finally { starting = false; }
 }
 
-startBot();
+function scheduleReconnect(delay, reason) {
+  if (shuttingDown || reconnectTimer) return;
+  console.log(`Connection closed (${reason || 'network'}). Retrying in ${delay / 1000}s.`);
+  reconnectTimer = setTimeout(() => { reconnectTimer = null; void startBot(); }, delay);
+}
+
+async function stopBot() {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  stopPaymentMonitor();
+  clearTimeout(reconnectTimer);
+  if (activeSocket) {
+    activeSocket.ev.removeAllListeners();
+    try { activeSocket.end(undefined); } catch {}
+  }
+  try { if (saveActiveCreds) await saveActiveCreds(); } catch {}
+  process.exit(0);
+}
+for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => { void stopBot(); });
+
+try {
+  await acquireSessionGuard(authDir, { replace: true, onReplace: stopBot });
+  await startBot();
+} catch (error) {
+  console.error(error.message);
+  process.exitCode = 1;
+}

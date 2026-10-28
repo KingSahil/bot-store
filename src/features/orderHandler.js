@@ -12,10 +12,11 @@ export async function showProductDetail(sock, from, productId, quotedMsg = null)
 
   const caption = 
     `🛍️ *${product.title}*\n` +
+    `${product.available ? '✅ In stock' : 'Currently out of stock'}\n` +
     `💰 Price: *${product.price} SGD*\n` +
     `📁 Category: *${(product.dept || 'Grocery').toUpperCase()}*\n\n` +
     `📝 ${product.desc}\n\n` +
-    `👇 *Tap "Buy Now" to proceed to checkout:*`
+    `👇 *Choose Add to cart to select quantity:*`
 
   const message = {
     footer: `© DeepGmart Singapore • ${STORE_URL}`,
@@ -23,8 +24,8 @@ export async function showProductDetail(sock, from, productId, quotedMsg = null)
       {
         name: 'quick_reply',
         buttonParamsJson: JSON.stringify({
-          display_text: '🛒 Buy / Order Now',
-          id: 'buy_now',
+          display_text: '🛒 Add to cart',
+          id: `add_${product.id}`,
         }),
       },
       {

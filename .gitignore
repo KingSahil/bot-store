@@ -42,3 +42,5 @@ src/data/userState.js
 # =========================
 *.tmp
 *.bak
+src/data/shop-state.json
+src/data/shop-state.json.tmp

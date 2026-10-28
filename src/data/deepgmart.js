@@ -1,9 +1,10 @@
 // src/data/deepgmart.js
+import 'dotenv/config'
 import fs from 'fs'
 import path from 'path'
 
-const DEEPGLOBAL_PATH = 'C:/projects/deepglobal'
-const PRODUCTS_JSON_PATH = path.join(DEEPGLOBAL_PATH, 'src/lib/data/products.json')
+const DEEPGLOBAL_PATH = process.env.DEEPGLOBAL_PATH || 'C:/projects/deepglobal'
+const PRODUCTS_JSON_PATH = process.env.PRODUCTS_JSON_PATH || path.join(DEEPGLOBAL_PATH, 'src/lib/data/products.json')
 
 import dotenv from 'dotenv'
 dotenv.config()
@@ -21,7 +22,7 @@ try {
 }
 
 export function formatPrice(cents) {
-  if (typeof cents !== 'number' || cents <= 0) return 'S$1.50'
+  if (typeof cents !== 'number' || cents <= 0) return 'Price unavailable'
   return `S$${(cents / 100).toFixed(2)}`
 }
 
@@ -47,7 +48,8 @@ export function getBannerBuffer() {
   return null
 }
 
-export function getProductBySlug(slug) {
+export function getProductBySlug(slug, refresh = true) {
+  if (refresh) refreshProducts()
   const cleanSlug = slug.replace(/^prod_/, '')
   const product = allProducts.find(p => p.slug === cleanSlug || p.id === cleanSlug)
   if (!product) return null
@@ -57,6 +59,9 @@ export function getProductBySlug(slug) {
     slug: product.slug,
     title: product.title,
     dept: product.dept,
+    available: product.in_stock === true,
+    purchasable: product.purchasable === true,
+    variants: product.variants || [],
     price: formatPrice(product.price),
     price_cents: product.price,
     imageRelative: product.images?.[0] || null,
@@ -65,69 +70,32 @@ export function getProductBySlug(slug) {
   }
 }
 
-export function searchProducts(query, limit = 5) {
-  const q = query.trim().toLowerCase()
-  if (!q) return []
 
-  return allProducts
-    .filter(p => p.purchasable && p.title.toLowerCase().includes(q))
-    .slice(0, limit)
-    .map(p => ({
-      id: `prod_${p.slug}`,
-      slug: p.slug,
-      title: p.title,
-      dept: p.dept,
-      price: formatPrice(p.price),
-      price_cents: p.price,
-      imageRelative: p.images?.[0] || null,
-      desc: p.short_desc || `${p.title} available at DeepGmart Singapore.`,
-      url: `${STORE_BASE}/products/${p.slug}`,
-    }))
+export function refreshProducts() {
+  // Read on every request so missing or invalid inventory fails closed.
+  try {
+    const data = JSON.parse(fs.readFileSync(PRODUCTS_JSON_PATH, 'utf8'))
+    if (!Array.isArray(data)) throw new Error('Invalid catalogue')
+    allProducts = data
+  } catch { allProducts = [] }
 }
-
-// Curated catalogue for the interactive menu
-export const CURATED_CATALOGUE = [
-  {
-    title: '🍿 Snacks & Savouries',
-    rows: [
-      { id: 'prod_haribo-gold-bears', title: 'Haribo Gold Bears', description: 'S$2.50 • Fruit gummy bears' },
-      { id: 'prod_laysclsic-salt-82', title: 'Lays Classic Salt 82g', description: 'S$1.40 • Crispy potato chips' },
-      { id: 'prod_punjabi-samosa', title: 'Punjabi Samosa', description: 'S$7.90 • Traditional spiced samosas' },
-    ],
-  },
-  {
-    title: '🌾 Rice, Dals & Staples',
-    rows: [
-      { id: 'prod_ragi-aata-1kg', title: 'Ragi Aata 1 kg', description: 'S$2.30 • Nutritious millet flour' },
-      { id: 'prod_moong-dal-150gm', title: 'Moong Dal 150 g', description: 'S$2.10 • Yellow split lentils' },
-      { id: 'prod_ptnjali-cow-ghe1l', title: 'Patanjali Cow Ghee 1L', description: 'S$14.90 • 100% pure cow ghee' },
-      { id: 'prod_paneer-blk', title: 'Fresh Paneer Block', description: 'S$9.90 • Indian cottage cheese' },
-    ],
-  },
-  {
-    title: '🌶️ Spices & Masalas',
-    rows: [
-      { id: 'prod_mdh-pav-bhaji-masala', title: 'MDH Pav Bhaji Masala', description: 'S$2.10 • Classic spice blend' },
-      { id: 'prod_chana-masala', title: 'Chana Masala', description: 'S$4.60 • Authentic curry spices' },
-      { id: 'prod_turmeric-125g', title: 'Turmeric Powder 125g', description: 'S$1.95 • Pure Haldi powder' },
-      { id: 'prod_chat-masala-100g', title: 'Chat Masala 100 g', description: 'S$1.70 • Tangy Indian seasoning' },
-    ],
-  },
-  {
-    title: '🥤 Drinks & Chai',
-    rows: [
-      { id: 'prod_montaindew-325ml', title: 'Mountain Dew 325 ml', description: 'S$0.90 • Citrus soft drink' },
-      { id: 'prod_appy-fiz-500ml', title: 'Appy Fizz 500 ml', description: 'S$1.30 • Sparkling apple drink' },
-      { id: 'prod_boost', title: 'Boost Energy Drink', description: 'S$6.90 • Malt health drink' },
-      { id: 'prod_maxtea-tarik', title: 'Maxtea Tarik', description: 'S$5.60 • Instant milk tea' },
-    ],
-  },
-  {
-    title: '🥚 Essentials & Household',
-    rows: [
-      { id: 'prod_egg', title: 'Farm Fresh Eggs (10-Tray)', description: 'S$2.50 • Fresh Grade A eggs' },
-      { id: 'prod_darlie-double', title: 'Darlie Double Action', description: 'S$4.90 • Fresh mint toothpaste' },
-      { id: 'prod_3ply100sheets', title: '3-Ply Tissues (100s)', description: 'S$1.50 • Soft facial tissues' },
-    ],
-  },
-]
+export function listProducts(dept = null) {
+  refreshProducts()
+  return allProducts.filter(p => p.purchasable === true && (!dept || p.dept === dept))
+    .sort((a,b) => a.title.localeCompare(b.title))
+    .map(p => getProductBySlug(p.slug, false))
+}
+export function getCategories() {
+  refreshProducts()
+  const counts = new Map()
+  for (const p of allProducts.filter(p => p.purchasable === true)) counts.set(p.dept || 'other', (counts.get(p.dept || 'other') || 0) + 1)
+  return [...counts].sort().map(([id,count]) => ({ id, title: id.charAt(0).toUpperCase() + id.slice(1), count }))
+}
+export function searchProducts(query, limit = Infinity) {
+  const words = query.toLowerCase().trim().split(/\s+/).filter(Boolean)
+  if (!words.length) return []
+  return listProducts().filter(p => {
+    const text = [p.title, p.dept, p.desc].join(' ').toLowerCase()
+    return words.every(word => text.includes(word))
+  }).slice(0, limit)
+}

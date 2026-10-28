@@ -200,3 +200,58 @@ If you find this project useful, consider supporting the development:
 ## License
 
 This project is licensed under the [MIT License](LICENSE.md).
+
+
+## Category shopping and checkout
+
+The bot reads purchasable products from `PRODUCTS_JSON_PATH` (by default the Deepglobal product file beneath `DEEPGLOBAL_PATH`). It refreshes the file for each catalogue request and fails closed if it cannot read it. Categories and search results are paginated, with numbered replies available as a text fallback. Out-of-stock products can be browsed but cannot be added. Multiple variants require a variant selection.
+
+Commands: `menu`, `search rice`, `cart`, `qty 3`, `remove 1`, `clear cart`, `checkout`, `cancel`, and `status`. Product cards have Add to cart buttons. Prices and availability are checked again at checkout and payment creation.
+
+Customer carts, delivery addresses, and order history are saved atomically to `BOT_STATE_PATH`, default `src/data/shop-state.json`. Keep this file private, back it up, and run only one bot process per state file. This is local file storage, not a multi-instance database. A malformed state file stops startup rather than discarding saved orders.
+
+By default delivery matches the website: S$5 below S$50 and free from S$50. An optional nonblank `DELIVERY_FEE_CENTS` overrides this with a flat fee (`0` means free). Blank or missing uses the website rule; invalid values block checkout. Enable `ENABLE_COD=true` only if the store offers cash on delivery. Configure the real `ADMIN_JID` to receive confirmed orders. Review catalogue freshness and eligible product categories before operating the bot publicly.
+
+When online payment and COD are disabled, an admin-configured store can receive an unpaid order request through Request confirmation. The customer is told the store must confirm availability and payment instructions.
+
+For online payment set `STRIPE_SECRET_KEY`, initially a test key. The bot creates an order-specific Stripe-hosted Checkout session using server-selected product prices, quantities, and the configured delivery fee. It stores the session and reuses it on retry. Customers tap Check payment or send `status`; the bot checks Stripe and confirms only a paid session with matching order reference, metadata, currency, and amount. No payment screenshot marks an order paid. Payment confirmation is customer-triggered; automatic webhook notifications and native WhatsApp Business Platform payments are not included. The website checkout endpoint is not called or modified.
+
+Before enabling real payments, run the bot with test credentials and verify the complete flow from a phone, including successful, cancelled, and delayed payments. The local JSON snapshot cannot prove live POS stock; use a regularly refreshed export or shared inventory API for live operation. Confirmed orders are retained in the private state file; admin delivery failures do not erase them.
+
+Run `npm test` for the local shopping-flow and mocked Stripe verification tests. These checks do not send WhatsApp messages or charge cards.
+
+
+### Restarting the bot
+
+Run `npm start` again to replace the running bot from this same session folder. The new process requests shutdown over a local-only session guard, waits for the previous process to exit, and then connects. Login files and carts are preserved. This applies once the running process has the session guard; an older version needs to be stopped once before starting the updated version. Copies running on another computer or using a different session directory must be stopped separately.
+
+A 440 connection-replaced error stops automatic reconnect to avoid fighting another client. Temporary network failures retry with increasing delays up to 60 seconds; pairing restarts reconnect promptly. Session files are not automatically deleted on disconnect.
+
+
+### Guided delivery details
+
+Checkout collects full name, street/unit address, and six-digit Singapore postal code separately. Each step has Cancel and (after name) Back buttons. The final details card has Confirm details and Edit details buttons; customers can also type `edit name`, `edit address`, or `edit postal`. Details are validated before order review and stored as structured `shipping` data alongside the readable address. Postal codes remain strings to preserve leading zeros. This is an interactive conversation, not a native pop-up WhatsApp Flow.
+
+
+### WhatsApp Desktop compatibility
+
+By default each menu sends one native interactive card. If sending the card fails, the bot sends a readable fallback instead. Some Desktop/Web clients reject the native-flow/view-once envelope; those chats can use text-only mode. Send `desktop` to save a text-only preference for this customer chat, suppressing native cards. Send `mobile` to restore a single message with native buttons. Numbered menus, `add`, `cart`, `checkout`, delivery prompts, `confirm details`, `pay online`, `cash on delivery`, and `request confirmation` remain available without tapping buttons. Native desktop rendering depends on the receiving WhatsApp client and has not been verified by local transport tests.
+
+
+### Shopping while a payment is pending
+
+Pending Stripe sessions do not block adding products or starting another checkout. The cart stays available while payment is pending. Starting a new order preserves the previous order and its payment session in history. My orders lists current and earlier orders with order-specific payment checks. A paid historical order never clears a newer cart or marks a newer order paid. Existing Stripe links keep their original amounts; adding products requires a new order/payment link for the changed basket. Edit cart opens an interactive removal menu. Desktop text-only preferences remain available through `desktop`; use `mobile` for a single native interactive message.
+
+
+### Automatic device presentation
+
+By default each incoming message is classified using Baileys `getDevice(message.key.id)`: predicted Desktop/Web gets one readable message; predicted Android/iOS gets one native card. This is a message-ID heuristic, not verified device metadata or a client capability check. Unknown IDs preserve the last mode. `desktop` and `mobile` set a persistent manual override, while `auto` restores prediction. The latest sending device guides presentation; the bot cannot know which linked device will subsequently display the reply.
+
+
+### Shared DeepGmart checkout
+
+New online orders use the website's `/api/bot/checkout` endpoint and order database. Set `BOT_CHECKOUT_URL` to the website origin and set the same private `BOT_CHECKOUT_SECRET` (32+ random characters) in both services. Locally the website must run on `http://localhost:3000`. Deploy the website before targeting production from the bot, then restart the bot. Details: `C:/Projects/deepglobal/docs/whatsapp-checkout.md`.
+
+Payment confirmation is checked automatically while WhatsApp is connected, including pending orders restored on restart. Check payment remains a fallback. Expired shared payment links can be renewed from My orders. Existing Stripe links remain verifiable using the legacy Stripe key. New payments are never authorized from a receipt screenshot or customer message.
+
+Delivery address saving is optional: use Save for next time at confirmation, then Use saved address on a later checkout. Reply `forget address` to remove the reusable address. Existing order delivery records remain available for fulfilment.

@@ -1,3 +1,5 @@
+import { getState } from '../data/shopState.js'
+import { fallbackContent } from './menuFallback.js'
 import { jidNormalizedUser, proto, generateWAMessageFromContent, prepareWAMessageMedia } from '@whiskeysockets/baileys'
 import { resolveLidToPn } from './resolveLid.js'
 
@@ -29,6 +31,16 @@ export function wrapSendMessageGlobally(sock) {
       const hasLegacyButtons = Array.isArray(content?.buttons) && content.buttons.length > 0
 
       if (hasInteractiveButtons || hasLegacyButtons) {
+        const sendReadable = async () => {
+          const readable = await originalSendMessage(targetJid, fallbackContent(content), options)
+          if (readable?.key?.id) {
+            botSentMessageIds.add(readable.key.id)
+            storeMessage(readable.key.id, readable.message)
+          }
+          await sock.sendPresenceUpdate('paused', targetJid).catch(() => {})
+          return readable
+        }
+        if (getState(targetJid).uiMode === 'desktop') return await sendReadable()
         try {
           const buttons = hasInteractiveButtons
             ? content.interactiveButtons
@@ -123,7 +135,7 @@ export function wrapSendMessageGlobally(sock) {
           return msg
         } catch (interactiveErr) {
           console.warn('[Interactive Send Warning] Falling back to standard message:', interactiveErr.message)
-          // Fall through to originalSendMessage
+          return await sendReadable()
         }
       }
 
