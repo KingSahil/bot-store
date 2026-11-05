@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
-const file = process.env.BOT_STATE_PATH || path.join(process.cwd(), 'src/data/shop-state.json')
+import { botConfig } from '../config.js'
+const file = botConfig.stateFile
 let data = {}
 if (fs.existsSync(file)) data = JSON.parse(fs.readFileSync(file, 'utf8'))
 export function getState(jid) { return structuredClone(data[jid] || { cart: [], step: 'menu' }) }

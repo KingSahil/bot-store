@@ -1,6 +1,8 @@
 import { sharedCheckout, sharedCheckoutEnabled } from './sharedCheckout.js'
 import { promptDelivery } from './deliveryForm.js'
 import { randomUUID } from 'node:crypto'
+import { botConfig } from '../config.js'
+import { validateBoardQuantity } from '../data/boardPolicy.js'
 import { getProductBySlug, formatPrice, STORE_URL } from '../data/deepgmart.js'
 import { getState, setState } from '../data/shopState.js'
 import { sendChoices, quick } from './storeMenu.js'
@@ -12,7 +14,8 @@ export function priceCart(cart) {
     if (!p?.purchasable || !p.available || (p.variants.length && !variant?.available)) throw new Error(`${p?.title || 'Product'} is unavailable. Remove it from your cart.`)
     const price = variant?.price ?? p.price_cents
     if (!Number.isSafeInteger(price) || price <= 0 || !Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 99) throw new Error('Please check product price and quantity.')
-    return { ...item, title: variant?.title || p.title, price }
+    validateBoardQuantity(p, item.quantity)
+    return { ...item, title: variant?.title || p.title, price, ...(botConfig.mode !== 'normal' ? {board: botConfig.mode, terms: p.boardTerms} : {}) }
   })
 }
 export async function showCart(sock, jid) {
@@ -24,7 +27,10 @@ export async function showCart(sock, jid) {
 }
 export async function chooseQuantity(sock,jid,product,variant=null) {
   const s=getState(jid); s.product=product; s.variant=variant; s.step='quantity'; setState(jid,s)
-  return sendChoices(sock,jid,'Choose quantity, or type qty followed by a number (1–99).',[1,2,3,4,5].map(n=>({id:`qty_${n}`,title:String(n)})),[quick('View cart','cart')])
+  const p = getProductBySlug(product)
+  if (!p) throw new Error('This product is unavailable on this board.')
+  const quantities = Array.from({length:5}, (_, i) => p.minimum + i * p.increment).filter(n => n <= 99)
+  return sendChoices(sock,jid,`Choose quantity, or type qty followed by a number (1–99).${p.boardTerms ? '\n' + p.boardTerms : ''}`,quantities.map(n=>({id:`qty_${n}`,title:String(n)})),[quick('View cart','cart')])
 }
 export async function beginAdd(sock,jid,id) {
   const p=getProductBySlug(id)
@@ -61,22 +67,24 @@ export function deliveryFee(subtotal) {
   return Number(configured)
 }
 export async function checkout(sock,jid) {
+  if (botConfig.mode !== 'normal' && !process.env.ADMIN_JID) throw new Error('This board is awaiting store setup. Please try again later.')
   const s=getState(jid)
   const items=priceCart(s.cart)
   const fee=deliveryFee(items.reduce((n,x)=>n+x.price*x.quantity,0))
   s.deliveryDraft={};s.step=s.savedDelivery?'delivery_saved':'delivery_name';s.choices=[];setState(jid,s)
   if(s.savedDelivery) return sock.sendMessage(jid,{text:`*Delivery details*\n${s.savedDelivery.name}\n${s.savedDelivery.address}\nSingapore ${s.savedDelivery.postal}\n\nUse this saved address? Reply forget address to remove it.`,interactiveButtons:[quick('Use saved address','delivery_use_saved'),quick('New address','delivery_new'),quick('Cancel','cancel')]})
-  await sock.sendMessage(jid,{text:`*Checkout*\nItems: ${formatPrice(items.reduce((n,x)=>n+x.price*x.quantity,0))}\nDelivery: ${fee ? formatPrice(fee) : 'Free'}\nTotal: ${formatPrice(items.reduce((n,x)=>n+x.price*x.quantity,0)+fee)}\n\nLet’s enter your delivery details, one step at a time.`})
+  await sock.sendMessage(jid,{text:`*Checkout*\nItems: ${formatPrice(items.reduce((n,x)=>n+x.price*x.quantity,0))}\n${botConfig.mode === 'normal' ? 'Delivery' : 'Estimated delivery (store to confirm)'}: ${fee ? formatPrice(fee) : 'Free'}\nTotal: ${formatPrice(items.reduce((n,x)=>n+x.price*x.quantity,0)+fee)}\n\nLet’s enter your delivery details, one step at a time.`})
   return promptDelivery(sock,jid)
 }
 export async function review(sock,jid,address,shipping=null) {
   if(address.length<15 || address.length>1000 || !/\b\d{6}\b/.test(address)) throw new Error('Please include your name, full address and 6-digit Singapore postal code.')
   const s=getState(jid);const items=priceCart(s.cart);const fee=deliveryFee(items.reduce((n,x)=>n+x.price*x.quantity,0))
   if(s.order) s.orders=[...(s.orders || []).filter(o=>o.id!==s.order.id),s.order]
-  s.order={id:randomUUID(),items,address,...(shipping?{shipping}:{}),deliveryFee:fee,total:items.reduce((n,x)=>n+x.price*x.quantity,0)+fee,status:'awaiting_payment',createdAt:new Date().toISOString()};s.step='review';setState(jid,s)
-  return sendChoices(sock,jid,`Review order\n${items.map(x=>`${x.title} × ${x.quantity} — ${formatPrice(x.price*x.quantity)}`).join('\n')}\nDelivery: S$${(fee/100).toFixed(2)}\nTotal: ${formatPrice(s.order.total)}\n${address}`,[...(sharedCheckoutEnabled()?[{id:'pay_card',title:'Pay securely online',description:'Available wallets, card or PayNow through Stripe'}]:[]),...(process.env.ENABLE_COD==='true'?[{id:'pay_cod',title:'Cash on delivery'}]:[]),...(!sharedCheckoutEnabled() && process.env.ENABLE_COD!=='true' && process.env.ADMIN_JID?[{id:'pay_manual',title:'Request confirmation',description:'Store confirms availability and payment instructions. Not paid.'}]:[])],[...(shipping?[quick('Edit delivery details','delivery_edit')]:[]),quick('Cancel checkout','cancel')])
+  s.order={id:randomUUID(),board:botConfig.mode,items,address,...(shipping?{shipping}:{}),deliveryFee:fee,total:items.reduce((n,x)=>n+x.price*x.quantity,0)+fee,status:'awaiting_payment',createdAt:new Date().toISOString()};s.step='review';setState(jid,s)
+  return sendChoices(sock,jid,`Review order\n${items.map(x=>`${x.title} × ${x.quantity}${x.terms ? '\n'+x.terms : ''} — ${formatPrice(x.price*x.quantity)}`).join('\n')}\n${botConfig.mode === 'normal' ? 'Delivery' : 'Estimated delivery (store to confirm)'}: S$${(fee/100).toFixed(2)}\nTotal: ${formatPrice(s.order.total)}\n${address}`,[...(botConfig.mode === 'normal' && sharedCheckoutEnabled()?[{id:'pay_card',title:'Pay securely online',description:'Available wallets, card or PayNow through Stripe'}]:[]),...(botConfig.mode === 'normal' && process.env.ENABLE_COD==='true'?[{id:'pay_cod',title:'Cash on delivery'}]:[]),...((botConfig.mode !== 'normal' || (!sharedCheckoutEnabled() && process.env.ENABLE_COD!=='true')) && process.env.ADMIN_JID?[{id:'pay_manual',title:'Request confirmation',description:'Store confirms availability and payment instructions. Not paid.'}]:[])],[...(shipping?[quick('Edit delivery details','delivery_edit')]:[]),quick('Cancel checkout','cancel')])
 }
 export async function pay(sock,jid,method,orderId=null) {
+  if (botConfig.mode !== 'normal' && method !== 'pay_manual') throw new Error('This board accepts order requests only. The store must confirm stock, delivery and payment.')
   const s=getState(jid);const o=!orderId || s.order?.id===orderId?s.order:(s.orders || []).find(x=>x.id===orderId)
   if(!o || (!orderId && !['review','payment'].includes(s.step))) throw new Error('Please open your cart and checkout first.')
   if(o.status==='paid' || o.status==='cod_confirmed' || o.status==='awaiting_store_confirmation') throw new Error('This order is already confirmed.')
@@ -85,7 +93,7 @@ export async function pay(sock,jid,method,orderId=null) {
     if(!process.env.ADMIN_JID) throw new Error('Please contact the store to arrange your order.')
     o.status='awaiting_store_confirmation';s.step='done';s.cart=[];s.choices=[];setState(jid,s)
     await notify(sock,jid,o)
-    return sock.sendMessage(jid,{text:`Order request ${o.id} sent to the store. Total: ${formatPrice(o.total)}. The store must confirm availability and payment instructions. This order is not paid.`,interactiveButtons:[quick('Continue shopping','menu'),quick('My orders','orders')]})
+    return sock.sendMessage(jid,{text:`${botConfig.label} order request ${o.id} sent to the store. ${botConfig.mode === 'normal' ? 'Total' : 'Estimated total (delivery to be confirmed)'}: ${formatPrice(o.total)}. The store must confirm availability and payment instructions. This order is not paid.`,interactiveButtons:[quick('Continue shopping','menu'),quick('My orders','orders')]})
   }
   if(method==='pay_cod') {
     if(process.env.ENABLE_COD!=='true') throw new Error('Cash on delivery is unavailable.')
@@ -112,7 +120,7 @@ export async function pay(sock,jid,method,orderId=null) {
 async function notify(sock,jid,o) {
   if(process.env.ADMIN_JID) {
     try {
-      await sock.sendMessage(process.env.ADMIN_JID,{text:`Order ${o.orderNumber || o.id}\nCustomer: ${jid}\n${o.items.map(x=>`${x.title} × ${x.quantity}`).join('\n')}\n${o.address}\nTotal: ${formatPrice(o.total)}\nStatus: ${o.status}`})
+      await sock.sendMessage(process.env.ADMIN_JID,{text:`${botConfig.label} order ${o.orderNumber || o.id}\nCustomer: ${jid}\n${o.items.map(x=>`${x.title} × ${x.quantity}${x.terms ? '\n'+x.terms : ''}`).join('\n')}\n${o.address}\nTotal: ${formatPrice(o.total)}\nStatus: ${o.status}`})
       return true
     } catch { return false }
   }

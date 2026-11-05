@@ -2,6 +2,8 @@
 import 'dotenv/config'
 import fs from 'fs'
 import path from 'path'
+import { botConfig } from '../config.js'
+import { belongsToBoard, boardTerms } from './boardPolicy.js'
 
 const DEEPGLOBAL_PATH = process.env.DEEPGLOBAL_PATH || 'C:/projects/deepglobal'
 const PRODUCTS_JSON_PATH = process.env.PRODUCTS_JSON_PATH || path.join(DEEPGLOBAL_PATH, 'src/lib/data/products.json')
@@ -53,19 +55,28 @@ export function getProductBySlug(slug, refresh = true) {
   const cleanSlug = slug.replace(/^prod_/, '')
   const product = allProducts.find(p => p.slug === cleanSlug || p.id === cleanSlug)
   if (!product) return null
+  if (!belongsToBoard(product, botConfig.mode)) return null
+  const terms = boardTerms(product, botConfig.mode)
+  if (!terms) return null
+  // Special-board offers currently support single-SKU products only.
+  if (botConfig.mode !== 'normal' && product.variants?.length) return null
 
   return {
     id: `prod_${product.slug}`,
     slug: product.slug,
     title: product.title,
     dept: product.dept,
-    available: product.in_stock === true,
+    available: botConfig.mode === 'preorder' ? product.preorder.accepting_orders === true : product.in_stock === true,
     purchasable: product.purchasable === true,
     variants: product.variants || [],
-    price: formatPrice(product.price),
-    price_cents: product.price,
+    board: botConfig.mode,
+    minimum: terms.minimum,
+    increment: terms.increment,
+    boardTerms: terms.description,
+    price: formatPrice(terms.price),
+    price_cents: terms.price,
     imageRelative: product.images?.[0] || null,
-    desc: product.short_desc || `${product.title} available at DeepGmart Singapore.`,
+    desc: [product.short_desc || `${product.title} available at DeepGmart Singapore.`, terms.description].filter(Boolean).join('\n'),
     url: `${STORE_BASE}/products/${product.slug}`,
   }
 }
@@ -83,12 +94,12 @@ export function listProducts(dept = null) {
   refreshProducts()
   return allProducts.filter(p => p.purchasable === true && (!dept || p.dept === dept))
     .sort((a,b) => a.title.localeCompare(b.title))
-    .map(p => getProductBySlug(p.slug, false))
+    .map(p => getProductBySlug(p.slug, false)).filter(Boolean)
 }
 export function getCategories() {
   refreshProducts()
   const counts = new Map()
-  for (const p of allProducts.filter(p => p.purchasable === true)) counts.set(p.dept || 'other', (counts.get(p.dept || 'other') || 0) + 1)
+  for (const p of listProducts()) counts.set(p.dept || 'other', (counts.get(p.dept || 'other') || 0) + 1)
   return [...counts].sort().map(([id,count]) => ({ id, title: id.charAt(0).toUpperCase() + id.slice(1), count }))
 }
 export function searchProducts(query, limit = Infinity) {

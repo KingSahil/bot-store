@@ -47,3 +47,6 @@ src/data/shop-state.json.tmp
 
 # Screenshots attached to Codex chats
 .codex-remote-attachments/
+runtime/
+config/*.env
+catalogues/*.json

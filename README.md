@@ -55,6 +55,10 @@
 
 ## Features
 
+### Three dedicated WhatsApp numbers
+
+Run `npm run start:normal`, `npm run start:preorder`, and `npm run start:wholesale` in separate terminals. Each instance has its own WhatsApp session, carts and orders under `runtime/<mode>/`. Configure the matching files in `config/` and pair a different number to each QR code. See [the three-bot setup guide](docs/three-bots.md) for profile settings, product assignment, quantity rules and payment limitations. Pre-order and wholesale currently submit unpaid store-confirmation requests; normal stock keeps the website checkout flow.
+
 * Interactive product menus with multiple options
 * Order handling & receipt upload
 * Multiple payment methods (OVO, DANA, GoPay, ShopeePay)

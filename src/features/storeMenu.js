@@ -1,5 +1,6 @@
 import { getCategories, listProducts, searchProducts } from '../data/deepgmart.js'
 import { getState, setState } from '../data/shopState.js'
+import { botConfig } from '../config.js'
 export const quick = (text, id) => ({ name: 'quick_reply', buttonParamsJson: JSON.stringify({ display_text: text, id }) })
 export async function sendChoices(sock, from, text, rows, buttons = []) {
   // Numbered text remains usable on clients that do not render interactive lists.
@@ -13,7 +14,7 @@ export async function sendChoices(sock, from, text, rows, buttons = []) {
 }
 export async function sendProductMenu(sock, from) {
   const categories = getCategories()
-  return sendChoices(sock, from, 'Welcome to DeepGmart! Browse a category, type search followed by a product name, or reply cart.', categories.map(c => ({ id: `dept_${c.id}`, title: c.title, description: `${c.count} products` })), [quick('Search products','search'),quick('View cart','cart'),quick('My orders','orders')])
+  return sendChoices(sock, from, `Welcome to DeepGmart — ${botConfig.label}! ${botConfig.mode === 'normal' ? '' : 'Orders require store confirmation of stock, delivery and payment. '}${categories.length ? 'Browse a category, type search followed by a product name, or reply cart.' : 'No products are listed on this board yet. Please check back soon.'}`, categories.map(c => ({ id: `dept_${c.id}`, title: c.title, description: `${c.count} products` })), [quick('Search products','search'),quick('View cart','cart'),quick('My orders','orders')])
 }
 export async function sendDepartmentMenu(sock, from, dept, page = 0) {
   return sendProductPage(sock, from, listProducts(dept), `Category: ${dept}`, { dept, page })

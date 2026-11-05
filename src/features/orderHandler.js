@@ -12,7 +12,7 @@ export async function showProductDetail(sock, from, productId, quotedMsg = null)
 
   const caption = 
     `🛍️ *${product.title}*\n` +
-    `${product.available ? '✅ In stock' : 'Currently out of stock'}\n` +
+    `${product.board === 'preorder' ? (product.available ? 'Pre-orders open — awaiting arrival' : 'Pre-orders closed') : product.available ? '✅ In stock' : 'Currently out of stock'}\n` +
     `💰 Price: *${product.price} SGD*\n` +
     `📁 Category: *${(product.dept || 'Grocery').toUpperCase()}*\n\n` +
     `📝 ${product.desc}\n\n` +

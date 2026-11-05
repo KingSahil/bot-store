@@ -2,6 +2,7 @@
 import fs from 'fs'
 import path from 'path'
 import { jidNormalizedUser } from '@whiskeysockets/baileys'
+import { botConfig } from '../config.js'
 
 const lidCache = new Map()
 
@@ -20,7 +21,7 @@ export function resolveLidToPn(jid) {
 
   // 1. Check reverse file in session/
   try {
-    const reverseFile = path.join(process.cwd(), 'session', `lid-mapping-${lidUser}_reverse.json`)
+    const reverseFile = path.join(botConfig.authDir, `lid-mapping-${lidUser}_reverse.json`)
     if (fs.existsSync(reverseFile)) {
       const pn = JSON.parse(fs.readFileSync(reverseFile, 'utf8'))
       if (pn) {
@@ -33,7 +34,7 @@ export function resolveLidToPn(jid) {
 
   // 2. Scan all lid-mapping-*.json files in session/
   try {
-    const sessionDir = path.join(process.cwd(), 'session')
+    const sessionDir = botConfig.authDir
     if (fs.existsSync(sessionDir)) {
       const files = fs.readdirSync(sessionDir)
       for (const file of files) {
@@ -49,18 +50,6 @@ export function resolveLidToPn(jid) {
       }
     }
   } catch (_) { }
-
-  // 3. Fallback: check ADMIN_JID from .env if it matches user's known testing phone
-  const adminJid = process.env.ADMIN_JID
-  if (adminJid) {
-    const adminPn = adminJid.split('@')[0].replace(/\D/g, '')
-    // Default fallback for owner's known LID (90985040191717 -> admin number)
-    if (lidUser === '90985040191717') {
-      const resolved = jidNormalizedUser(`${adminPn}@s.whatsapp.net`)
-      lidCache.set(lidUser, resolved)
-      return resolved
-    }
-  }
 
   return jidNormalizedUser(jid)
 }

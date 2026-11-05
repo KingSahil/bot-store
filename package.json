@@ -6,6 +6,9 @@
   "type": "module",
   "scripts": {
     "start": "node index.js",
+    "start:normal": "node scripts/start-bot.js normal",
+    "start:preorder": "node scripts/start-bot.js preorder",
+    "start:wholesale": "node scripts/start-bot.js wholesale",
     "test": "node --test"
   },
   "keywords": [

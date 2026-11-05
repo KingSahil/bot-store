@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+import { botConfig } from './src/config.js';
+import { createNewMessageFilter } from './src/utils/newMessages.js';
+import { isSenderAllowed } from './src/utils/allowedNumbers.js';
 import { startPaymentMonitor } from './src/features/paymentMonitor.js';
 import { makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestWaWebVersion, makeCacheableSignalKeyStore, jidNormalizedUser } from '@whiskeysockets/baileys';
 import NodeCache from 'node-cache';
@@ -85,8 +88,9 @@ console.log = function (...args) {
   originalLog.apply(console, args);
 };
 
-const authDir = path.join(process.cwd(), 'session');
+const authDir = botConfig.authDir;
 const msgRetryCounterCache = new NodeCache();
+const newMessages = createNewMessageFilter();
 
 function centerText(text) {
   const lines = text.split('\n');
@@ -116,7 +120,7 @@ function showBanner() {
   const text = figlet.textSync('Bot - Store', { font: 'Slant' });
   console.log(chalk.cyanBright(centerText(text)));
 
-  const desc = 'WhatsApp bot store for selling products';
+  const desc = `DeepGmart — ${botConfig.label}`;
   const line = '─'.repeat(desc.length);
   console.log(chalk.greenBright(centerText(desc)));
   console.log(chalk.gray(centerText(line)) + '\n');
@@ -134,6 +138,8 @@ async function startBot() {
 
   if (shuttingDown) return;
   const sock = makeWASocket({
+    syncFullHistory: false,
+    shouldSyncHistoryMessage: () => false,
     version,
     auth: {
       creds: state.creds,
@@ -164,15 +170,23 @@ async function startBot() {
 
     if (activeSocket !== sock || closed || shuttingDown) return;
     if (connection === 'open') {
+      const connectedNumber = (sock.user?.id || '').split(':')[0].split('@')[0];
+      if (botConfig.expectedNumber && connectedNumber !== botConfig.expectedNumber) {
+        console.error(`Wrong WhatsApp account for ${botConfig.label}. Stop and pair the configured number using this instance's session directory.`);
+        await stopBot();
+        return;
+      }
       stopPaymentMonitor();
+      newMessages.connected();
       stopPaymentMonitor = startPaymentMonitor(sock, { onError: message => console.error(message) });
       reconnectAttempt = 0;
       const storeUrl = process.env.STORE_URL || 'https://www.deepglobal.com.sg/shop';
-      console.log(chalk.greenBright('\n🎉 DeepGmart Bot successfully connected to WhatsApp!'));
+      console.log(chalk.greenBright(`\nDeepGmart — ${botConfig.label} connected to WhatsApp!`));
       console.log(chalk.cyan(`👤 Account: ${sock.user?.id || 'Unknown'}`));
       console.log(chalk.green(`🛒 Store: DeepGmart Singapore (${storeUrl})`));
-      console.log(chalk.green('🌐 Public Store Mode: Active (all incoming messages will receive interactive menu).\n'));
+      console.log(chalk.green(botConfig.allowedNumbers.length ? `Sender filter active: ${botConfig.allowedNumbers.length} allowed number(s).\n` : 'Sender filter: all numbers allowed.\n'));
     } else if (connection === 'close') {
+      newMessages.disconnected();
       closed = true;
       stopPaymentMonitor();
       const statusCode = lastDisconnect?.error?.output?.statusCode;
@@ -196,8 +210,9 @@ async function startBot() {
   sock.ev.on('creds.update', () => saveCreds().catch(error => console.error('Unable to save WhatsApp credentials:', error.message)));
 
   sock.ev.on('messages.upsert', async m => {
+    if (activeSocket !== sock || closed || shuttingDown) return;
     for (const msg of m.messages || []) {
-      if (!msg || !msg.message) continue;
+      if (!newMessages.accepts(m.type, msg)) continue;
 
       // Save message to store for retry support
       if (msg.key?.id && msg.message) {
@@ -223,7 +238,9 @@ async function startBot() {
       if (!rawFrom || rawFrom === 'status@broadcast' || rawFrom.endsWith('@g.us')) continue;
 
       // Resolve LID to the user's real phone number JID
-      const from = resolveLidToPn(rawFrom);
+      const phoneJid = rawFrom.endsWith('@lid') && msg.key.remoteJidAlt?.endsWith('@s.whatsapp.net') ? msg.key.remoteJidAlt : rawFrom;
+      const from = resolveLidToPn(phoneJid);
+      if (!isSenderAllowed(from, botConfig.allowedNumbers)) continue;
 
       const userText = (
         msg.message?.conversation ||
