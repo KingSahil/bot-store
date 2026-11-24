@@ -12,7 +12,8 @@ export function priceCart(cart) {
     const p = getProductBySlug(item.product)
     const variant = p?.variants.find(v => v.id === item.variant)
     if (!p?.purchasable || !p.available || (p.variants.length && !variant?.available)) throw new Error(`${p?.title || 'Product'} is unavailable. Remove it from your cart.`)
-    const price = variant?.price ?? p.price_cents
+    const tier = p.priceTiers?.findLast(tier => item.quantity >= tier.quantity)
+    const price = tier?.price ?? variant?.price ?? p.price_cents
     if (!Number.isSafeInteger(price) || price <= 0 || !Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 99) throw new Error('Please check product price and quantity.')
     validateBoardQuantity(p, item.quantity)
     return { ...item, title: variant?.title || p.title, price, ...(botConfig.mode !== 'normal' ? {board: botConfig.mode, terms: p.boardTerms} : {}) }
@@ -34,6 +35,9 @@ export async function chooseQuantity(sock,jid,product,variant=null) {
 }
 export async function beginAdd(sock,jid,id) {
   const p=getProductBySlug(id)
+  if (p?.pricingPending) throw new Error(p.board === 'wholesale'
+    ? 'Wholesale prices, pack sizes and minimum quantities are coming soon. This item is available to browse.'
+    : 'The pre-order price and availability are pending store confirmation.')
   if(!p?.purchasable || !p.available) throw new Error('This product is out of stock. Please choose another item.')
   if(p.variants.length>1) {
     const s=getState(jid);s.product=id;setState(jid,s)
@@ -67,13 +71,14 @@ export function deliveryFee(subtotal) {
   return Number(configured)
 }
 export async function checkout(sock,jid) {
-  if (botConfig.mode !== 'normal' && !process.env.ADMIN_JID) throw new Error('This board is awaiting store setup. Please try again later.')
+  if (botConfig.mode === 'wholesale' && !process.env.ADMIN_JID) throw new Error('This board is awaiting store setup. Please try again later.')
+  if (botConfig.mode === 'preorder' && !sharedCheckoutEnabled()) throw new Error('Advance payment is temporarily unavailable. Your cart is saved.')
   const s=getState(jid)
   const items=priceCart(s.cart)
   const fee=deliveryFee(items.reduce((n,x)=>n+x.price*x.quantity,0))
   s.deliveryDraft={};s.step=s.savedDelivery?'delivery_saved':'delivery_name';s.choices=[];setState(jid,s)
   if(s.savedDelivery) return sock.sendMessage(jid,{text:`*Delivery details*\n${s.savedDelivery.name}\n${s.savedDelivery.address}\nSingapore ${s.savedDelivery.postal}\n\nUse this saved address? Reply forget address to remove it.`,interactiveButtons:[quick('Use saved address','delivery_use_saved'),quick('New address','delivery_new'),quick('Cancel','cancel')]})
-  await sock.sendMessage(jid,{text:`*Checkout*\nItems: ${formatPrice(items.reduce((n,x)=>n+x.price*x.quantity,0))}\n${botConfig.mode === 'normal' ? 'Delivery' : 'Estimated delivery (store to confirm)'}: ${fee ? formatPrice(fee) : 'Free'}\nTotal: ${formatPrice(items.reduce((n,x)=>n+x.price*x.quantity,0)+fee)}\n\nLet’s enter your delivery details, one step at a time.`})
+  await sock.sendMessage(jid,{text:`*Checkout*\nItems: ${formatPrice(items.reduce((n,x)=>n+x.price*x.quantity,0))}\n${botConfig.mode === 'wholesale' ? 'Estimated delivery (store to confirm)' : 'Delivery'}: ${fee ? formatPrice(fee) : 'Free'}\nTotal: ${formatPrice(items.reduce((n,x)=>n+x.price*x.quantity,0)+fee)}\n\nLet’s enter your delivery details, one step at a time.`})
   return promptDelivery(sock,jid)
 }
 export async function review(sock,jid,address,shipping=null) {
@@ -81,10 +86,17 @@ export async function review(sock,jid,address,shipping=null) {
   const s=getState(jid);const items=priceCart(s.cart);const fee=deliveryFee(items.reduce((n,x)=>n+x.price*x.quantity,0))
   if(s.order) s.orders=[...(s.orders || []).filter(o=>o.id!==s.order.id),s.order]
   s.order={id:randomUUID(),board:botConfig.mode,items,address,...(shipping?{shipping}:{}),deliveryFee:fee,total:items.reduce((n,x)=>n+x.price*x.quantity,0)+fee,status:'awaiting_payment',createdAt:new Date().toISOString()};s.step='review';setState(jid,s)
-  return sendChoices(sock,jid,`Review order\n${items.map(x=>`${x.title} × ${x.quantity}${x.terms ? '\n'+x.terms : ''} — ${formatPrice(x.price*x.quantity)}`).join('\n')}\n${botConfig.mode === 'normal' ? 'Delivery' : 'Estimated delivery (store to confirm)'}: S$${(fee/100).toFixed(2)}\nTotal: ${formatPrice(s.order.total)}\n${address}`,[...(botConfig.mode === 'normal' && sharedCheckoutEnabled()?[{id:'pay_card',title:'Pay securely online',description:'Available wallets, card or PayNow through Stripe'}]:[]),...(botConfig.mode === 'normal' && process.env.ENABLE_COD==='true'?[{id:'pay_cod',title:'Cash on delivery'}]:[]),...((botConfig.mode !== 'normal' || (!sharedCheckoutEnabled() && process.env.ENABLE_COD!=='true')) && process.env.ADMIN_JID?[{id:'pay_manual',title:'Request confirmation',description:'Store confirms availability and payment instructions. Not paid.'}]:[])],[...(shipping?[quick('Edit delivery details','delivery_edit')]:[]),quick('Cancel checkout','cancel')])
+  const payments = []
+  if (botConfig.mode !== 'wholesale' && sharedCheckoutEnabled()) payments.push({id:'pay_card',title:'Pay securely online',description:'Available wallets, card or PayNow through Stripe'})
+  if (botConfig.mode === 'normal' && process.env.ENABLE_COD === 'true') payments.push({id:'pay_cod',title:'Cash on delivery'})
+  if (botConfig.mode !== 'preorder' && !payments.length && process.env.ADMIN_JID) payments.push({id:'pay_manual',title:'Request confirmation',description:'Store confirms availability and payment instructions. Not paid.'})
+  const delivery = botConfig.mode === 'wholesale' ? 'Estimated delivery (store to confirm)' : 'Delivery'
+  const advance = botConfig.mode === 'preorder' ? '\nFull advance payment is required.' : ''
+  return sendChoices(sock,jid,`Review order\n${items.map(x=>`${x.title} × ${x.quantity}${x.terms ? '\n'+x.terms : ''} — ${formatPrice(x.price*x.quantity)}`).join('\n')}\n${delivery}: S$${(fee/100).toFixed(2)}\nTotal: ${formatPrice(s.order.total)}${advance}\n${address}`,payments,[...(shipping?[quick('Edit delivery details','delivery_edit')]:[]),quick('Cancel checkout','cancel')])
 }
 export async function pay(sock,jid,method,orderId=null) {
-  if (botConfig.mode !== 'normal' && method !== 'pay_manual') throw new Error('This board accepts order requests only. The store must confirm stock, delivery and payment.')
+  if (botConfig.mode === 'wholesale' && method !== 'pay_manual') throw new Error('This board accepts order requests only. The store must confirm stock, delivery and payment.')
+  if (botConfig.mode === 'preorder' && method !== 'pay_card') throw new Error('Pre-orders require full advance payment online.')
   const s=getState(jid);const o=!orderId || s.order?.id===orderId?s.order:(s.orders || []).find(x=>x.id===orderId)
   if(!o || (!orderId && !['review','payment'].includes(s.step))) throw new Error('Please open your cart and checkout first.')
   if(o.status==='paid' || o.status==='cod_confirmed' || o.status==='awaiting_store_confirmation') throw new Error('This order is already confirmed.')
@@ -107,6 +119,7 @@ export async function pay(sock,jid,method,orderId=null) {
   }
   // The website owns authoritative pricing, storage and Stripe credentials.
   const result=await sharedCheckout({requestId:o.id,phone:'+'+jid.split('@')[0],shipping:o.shipping,
+    ...(botConfig.mode === 'preorder' ? {board:'preorder',expectedTotal:o.total} : {}),
     items:o.items.map(({product,variant,quantity})=>({product,variant,quantity})),...(o.session?{sessionId:o.session}:{})})
   if(!result.sessionId || !Number.isSafeInteger(result.total) || (!result.paid && !result.url)) throw new Error('Unable to open this payment. Please check your order status.')
   o.session=result.sessionId;o.url=result.url;o.orderNumber=result.orderNumber;o.total=result.total;o.deliveryFee=result.deliveryFee

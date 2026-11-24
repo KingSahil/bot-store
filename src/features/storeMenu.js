@@ -14,9 +14,13 @@ export async function sendChoices(sock, from, text, rows, buttons = []) {
 }
 export async function sendProductMenu(sock, from) {
   const categories = getCategories()
-  return sendChoices(sock, from, `Welcome to DeepGmart — ${botConfig.label}! ${botConfig.mode === 'normal' ? '' : 'Orders require store confirmation of stock, delivery and payment. '}${categories.length ? 'Browse a category, type search followed by a product name, or reply cart.' : 'No products are listed on this board yet. Please check back soon.'}`, categories.map(c => ({ id: `dept_${c.id}`, title: c.title, description: `${c.count} products` })), [quick('Search products','search'),quick('View cart','cart'),quick('My orders','orders')])
+  const notice = { normal: '', preorder: 'Pre-orders require advance payment. ', wholesale: 'Wholesale terms are subject to store confirmation. ' }[botConfig.mode]
+  return sendChoices(sock, from, `Welcome to DeepGmart — ${botConfig.label}! ${notice}${categories.length ? 'Browse a category, type search followed by a product name, or reply cart.' : 'No products are listed on this board yet. Please check back soon.'}`, categories.map(c => ({ id: `dept_${c.id}`, title: c.title, description: `${c.count} products` })), [quick('Search products','search'),quick('View cart','cart'),quick('My orders','orders')])
 }
 export async function sendDepartmentMenu(sock, from, dept, page = 0) {
+  if (botConfig.mode === 'wholesale' && dept === 'liquor' && listProducts(dept).length === 0) {
+    return sendChoices(sock, from, 'Wholesale liquor will be available in bulk. Prices, pack sizes and minimum quantities will be added after store confirmation.', [], [quick('Categories', 'menu')])
+  }
   return sendProductPage(sock, from, listProducts(dept), `Category: ${dept}`, { dept, page })
 }
 export async function sendSearchMenu(sock, from, query, page = 0) {
@@ -29,7 +33,12 @@ async function sendProductPage(sock, from, products, title, context) {
   state.browse = { ...context, page }
   state.step = 'browse'
   setState(from,state)
-  const rows = products.slice(page*8,page*8+8).map(p => ({ id:p.id, title:p.title, description:`${p.price}${p.available ? '' : ' • Out of stock'}` }))
+  const rows = products.slice(page*8,page*8+8).map(p => {
+    const title = p.title.length > 24 ? p.title.slice(0, 23) + '…' : p.title
+    const price = `${p.price}${p.pricingPending || p.available ? '' : ' • Out of stock'}`
+    const detail = p.title.slice(23).trim()
+    return { id: p.id, title: p.title, description: title === p.title ? price : `${detail} · ${price}` }
+  })
   if(page > 0) rows.push({id:'previous',title:'Previous page'})
   if(page+1 < pages) rows.push({id:'next',title:'Next page'})
   return sendChoices(sock,from,`${title} — ${products.length} results. Page ${page+1}/${pages}.${products.length ? '' : ' Try fewer words or another name.'}`,rows,[quick('Categories','menu'),quick('View cart','cart')])

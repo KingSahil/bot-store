@@ -1,0 +1,282 @@
+[
+  {
+    "title": "Britannia Milk Bikis 100 g",
+    "slug": "brit-milk-bikis-100g",
+    "dept": "snacks",
+    "images": [
+      "/assets/img/products/real_milk_bikis.jpg"
+    ],
+    "sources": [
+      {
+        "file": "SPMCatelog.pdf",
+        "location": 9
+      }
+    ]
+  },
+  {
+    "title": "Sago Vadam 200 g",
+    "slug": "sago-vadam-200g",
+    "dept": "pantry",
+    "images": [
+      "/assets/img/products/prod_71621d489c75.jpg"
+    ],
+    "sources": [
+      {
+        "file": "SPMCatelog.pdf",
+        "location": 30
+      }
+    ]
+  },
+  {
+    "title": "Maskachaska 62 g",
+    "slug": "maskachaska-62g",
+    "dept": "snacks",
+    "images": [
+      "/assets/img/products/off_6566b69501b4a33d.jpg"
+    ],
+    "sources": [
+      {
+        "file": "BRITANNIA INDIA AND DUBAI MAY 2023.pdf",
+        "location": 1
+      },
+      {
+        "file": "SPMCatelog.pdf",
+        "location": 6
+      }
+    ]
+  },
+  {
+    "title": "Punjabi Tadka 150 g",
+    "slug": "punjabi-tadka-150gm",
+    "dept": "snacks",
+    "images": [
+      "/assets/img/products/off_8feba1644d53c0ed.jpg"
+    ],
+    "sources": [
+      {
+        "file": "SPMCatelog.pdf",
+        "location": 25
+      }
+    ]
+  },
+  {
+    "title": "PS Tamarind 500 g",
+    "slug": "ps-tamarind-500g",
+    "dept": "baking",
+    "images": [
+      "/assets/img/products/prod_c5093c307dfc.jpg"
+    ],
+    "sources": [
+      {
+        "file": "SPMCatelog.pdf",
+        "location": 91
+      }
+    ]
+  },
+  {
+    "title": "Chana Dal 500 g",
+    "slug": "chana-dal-500g",
+    "dept": "pantry",
+    "images": [
+      "/assets/img/products/off_e75e6eac3d26aa82.jpg"
+    ],
+    "sources": [
+      {
+        "file": "PRICE LIST (21.06).pdf",
+        "location": 6
+      }
+    ]
+  },
+  {
+    "title": "Puffed Rice 200 g",
+    "slug": "puffed-rice-200gm",
+    "dept": "pantry",
+    "images": [
+      "/assets/img/products/prod_47a8412ccdec.jpg"
+    ],
+    "sources": [
+      {
+        "file": "PRICE LIST (21.06).pdf",
+        "location": 5
+      },
+      {
+        "file": "SPMCatelog.pdf",
+        "location": 83
+      }
+    ]
+  },
+  {
+    "title": "Corn Flour 500 g",
+    "slug": "corn-flour-500g",
+    "dept": "baking",
+    "images": [
+      "/assets/img/products/prod_0ee1d4259d16.jpg"
+    ],
+    "sources": [
+      {
+        "file": "PRICE LIST (21.06).pdf",
+        "location": 2
+      },
+      {
+        "file": "SPMCatelog.pdf",
+        "location": 47
+      }
+    ]
+  },
+  {
+    "title": "Imli Candy 140 g",
+    "slug": "imli-candy-140g",
+    "dept": "snacks",
+    "images": [
+      "/assets/img/products/off_2a43152dbf7f9348.jpg"
+    ],
+    "sources": [
+      {
+        "file": "PRICE LIST (21.06).pdf",
+        "location": 6
+      }
+    ]
+  },
+  {
+    "title": "Chulbuli Imli 190 g",
+    "slug": "chulbuli-imli-190g",
+    "dept": "baking",
+    "images": [
+      "/assets/img/products/prod_47575dc69704.jpg"
+    ],
+    "sources": [
+      {
+        "file": "PRICE LIST (21.06).pdf",
+        "location": 6
+      }
+    ]
+  },
+  {
+    "title": "Dried Fig 100 g",
+    "slug": "dried-fig-100g",
+    "dept": "snacks",
+    "images": [
+      "/assets/img/products/prod_c5c0d663146b.jpg"
+    ],
+    "sources": [
+      {
+        "file": "PRICE LIST (21.06).pdf",
+        "location": 7
+      }
+    ]
+  },
+  {
+    "title": "Fasting Salt 100 g",
+    "slug": "fasting-salt-100g",
+    "dept": "baking",
+    "images": [
+      "/assets/img/products/prod_0d587a9e4908.jpg"
+    ],
+    "sources": [
+      {
+        "file": "PRICE LIST (21.06).pdf",
+        "location": 2
+      }
+    ]
+  },
+  {
+    "title": "Society Tea 250 g",
+    "slug": "society-tea-250g",
+    "dept": "beverages",
+    "images": [
+      "/assets/img/products/off_06758a97cb6d1e6b.jpg"
+    ],
+    "sources": [
+      {
+        "file": "PRICE LIST (21.06).pdf",
+        "location": 18
+      }
+    ]
+  },
+  {
+    "title": "Kinley Soda 750 ml",
+    "slug": "kinley-soda-750ml",
+    "dept": "beverages",
+    "images": [
+      "/assets/img/products/off_c0da31e3f523030f.jpg"
+    ],
+    "sources": [
+      {
+        "file": "PRICE LIST (21.06).pdf",
+        "location": 20
+      }
+    ]
+  },
+  {
+    "title": "Rice Flakes Red 500 g",
+    "slug": "rice-flakes-red-500g",
+    "dept": "pantry",
+    "images": [
+      "/assets/img/products/prod_3b290bcbaed3.jpg"
+    ],
+    "sources": [
+      {
+        "file": "SPMCatelog.pdf",
+        "location": 83
+      }
+    ]
+  },
+  {
+    "title": "Phool Makhana 200 g",
+    "slug": "phool-makhana-200g",
+    "dept": "snacks",
+    "images": [
+      "/assets/img/products/off_4e23ee5cf68d8d85.jpg"
+    ],
+    "sources": [
+      {
+        "file": "KV product lists 10-03-25.pdf",
+        "location": 459
+      },
+      {
+        "file": "KV product lists 18-06-25.pdf",
+        "location": 491
+      },
+      {
+        "file": "KV product list 25-11-25.pdf",
+        "location": 530
+      },
+      {
+        "file": "KV PRODUCT LIST 12-10-25.pdf",
+        "location": 585
+      }
+    ]
+  },
+  {
+    "title": "Jaggery Powder 500 g",
+    "slug": "jaggery-powder-500g",
+    "dept": "baking",
+    "images": [
+      "/assets/img/products/off_abc30d8e21903aa8.jpg"
+    ],
+    "sources": [
+      {
+        "file": "SPMCatelog.pdf",
+        "location": 28
+      },
+      {
+        "file": "SPMCatelog.pdf",
+        "location": 30
+      }
+    ]
+  },
+  {
+    "title": "Khatta Meetha 150 g",
+    "slug": "khatta-meetha-150g",
+    "dept": "snacks",
+    "images": [
+      "/assets/img/products/off_3631b0a88a6b79f9.jpg"
+    ],
+    "sources": [
+      {
+        "file": "SPMCatelog.pdf",
+        "location": 23
+      }
+    ]
+  }
+]

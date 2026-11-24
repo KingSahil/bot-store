@@ -50,3 +50,4 @@ src/data/shop-state.json.tmp
 runtime/
 config/*.env
 catalogues/*.json
+/outputs/

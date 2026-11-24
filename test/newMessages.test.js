@@ -27,3 +27,14 @@ test('reconnect skips messages received while offline and accepts Baileys Long t
   assert.equal(filter.accepts('notify',message('backlog',105)),false)
   assert.equal(filter.accepts('notify',message('live',{toNumber:()=>111})),true)
 })
+
+test('a fresh server-queued message is accepted without replaying history or offline backlog', () => {
+  const filter = createNewMessageFilter()
+  filter.connected(100000)
+  filter.recordQueuedFrame('old', 99)
+  filter.recordQueuedFrame('new', 101)
+  assert.equal(filter.accepts('append', message('old', 99)), false)
+  assert.equal(filter.accepts('append', message('history', 101)), false)
+  assert.equal(filter.accepts('append', message('new', 101)), true)
+  assert.equal(filter.accepts('append', message('new', 101)), false)
+})

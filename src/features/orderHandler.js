@@ -8,33 +8,33 @@ export async function showProductDetail(sock, from, productId, quotedMsg = null)
     return
   }
 
-  const buffer = getProductImageBuffer(product.imageRelative)
+  const buffer = await getProductImageBuffer(product.imageRelative)
 
   const caption = 
     `🛍️ *${product.title}*\n` +
-    `${product.board === 'preorder' ? (product.available ? 'Pre-orders open — awaiting arrival' : 'Pre-orders closed') : product.available ? '✅ In stock' : 'Currently out of stock'}\n` +
-    `💰 Price: *${product.price} SGD*\n` +
+    `${product.pricingPending ? (product.board === 'wholesale' ? 'Bulk catalogue — prices and quantities coming soon' : 'Pre-order catalogue — price and availability pending') : product.board === 'preorder' ? (product.available ? 'Pre-orders open — awaiting arrival' : 'Pre-orders closed') : product.available ? '✅ In stock' : 'Currently out of stock'}\n` +
+    `💰 Price: *${product.price}${product.unit ? ` per ${product.unit}` : ''}*\n` +
     `📁 Category: *${(product.dept || 'Grocery').toUpperCase()}*\n\n` +
     `📝 ${product.desc}\n\n` +
-    `👇 *Choose Add to cart to select quantity:*`
+    (product.pricingPending ? 'The store will publish ordering details here.' : product.available ? '👇 *Choose Add to cart to select quantity:*' : 'Please check back for availability.')
 
   const message = {
     footer: `© DeepGmart Singapore • ${STORE_URL}`,
     interactiveButtons: [
-      {
+      ...(!product.pricingPending && product.available ? [{
         name: 'quick_reply',
         buttonParamsJson: JSON.stringify({
           display_text: '🛒 Add to cart',
           id: `add_${product.id}`,
         }),
-      },
-      {
+      }] : []),
+      ...(product.url ? [{
         name: 'cta_url',
         buttonParamsJson: JSON.stringify({
           display_text: '🌐 View in Web Shop',
           url: product.url,
         }),
-      },
+      }] : []),
       {
         name: 'quick_reply',
         buttonParamsJson: JSON.stringify({

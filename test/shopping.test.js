@@ -16,6 +16,7 @@ const {handler}=await import('../src/handler.js')
 const {getState,setState}=await import('../src/data/shopState.js')
 const {listProducts,searchProducts}=await import('../src/data/deepgmart.js')
 const {priceCart, pay, status, deliveryFee}=await import('../src/features/shop.js')
+const {sharedCheckout}=await import('../src/features/sharedCheckout.js')
 const jid='customer@s.whatsapp.net'
 let sent=[]
 const sock={sendMessage:async(to,content)=>{sent.push({to,...content})}}
@@ -52,12 +53,12 @@ test('shared checkout reuses references and only matching verified payments conf
  const items=priceCart(cart)
  setState(jid,{cart,step:'review',order:{id:'test-order',items,total:900,deliveryFee:500,address:'Test Singapore 123456',shipping:{name:'Jane Tan',address:'10 Test Street',postal:'123456'},status:'awaiting_payment'}})
  const original=globalThis.fetch;let creates=0;let amount=800;let paid=false
- globalThis.fetch=async(url,options)=>({ok:true,json:async()=>{
+ globalThis.fetch=async(url,options)=>{
   assert.match(String(url),/api\/bot\/checkout/)
   assert.equal(options.headers.Authorization,'Bearer '+'x'.repeat(40))
-  if(options.method==='POST') {creates++;const b=JSON.parse(options.body);assert.equal(b.requestId,'test-order');assert.equal(b.items[0].product,'prod_rice-1');if(creates>1)assert.equal(b.sessionId,'cs_test_fake');return {sessionId:'cs_test_fake',url:'https://checkout.stripe.com/test',orderNumber:'DG-WA-test-order',total:900,deliveryFee:500}}
-  return {paid,botOrder:'test-order',orderNumber:'DG-WA-test-order',total:amount,state:paid?'paid':'pending'}
- }})
+  if(options.method==='POST') {creates++;const b=JSON.parse(options.body);assert.equal(b.requestId,'test-order');assert.equal(b.items[0].product,'prod_rice-1');if(creates>1)assert.equal(b.sessionId,'cs_test_fake');return Response.json({sessionId:'cs_test_fake',url:'https://checkout.stripe.com/test',orderNumber:'DG-WA-test-order',total:900,deliveryFee:500})}
+  return Response.json({paid,botOrder:'test-order',orderNumber:'DG-WA-test-order',total:amount,state:paid?'paid':'pending'})
+ }
  try {
   await pay(sock,jid,'pay_card');await pay(sock,jid,'pay_card');assert.equal(creates,2)
   assert.equal(getState(jid).order.session,'cs_test_fake')
@@ -67,6 +68,18 @@ test('shared checkout reuses references and only matching verified payments conf
   assert.equal(getState(jid).order.customerNotified,true);assert.equal(getState(jid).order.adminNotified,true)
   const count=sent.length;await status(sock,jid,null,{automatic:true});assert.equal(sent.length,count)
  } finally {globalThis.fetch=original;process.env.BOT_CHECKOUT_SECRET=''}
+})
+
+test('a disabled hosting deployment reports checkout unavailable without parsing its text response', async () => {
+ const original = globalThis.fetch
+ process.env.BOT_CHECKOUT_SECRET = 'x'.repeat(40)
+ globalThis.fetch = async () => new Response('Payment Required', {status: 402})
+ try {
+  await assert.rejects(sharedCheckout({items: []}), /Online payment is temporarily unavailable/)
+ } finally {
+  globalThis.fetch = original
+  process.env.BOT_CHECKOUT_SECRET = ''
+ }
 })
 
 test('unset delivery settings use website rules and manual order request remains unpaid',async()=>{
@@ -152,7 +165,7 @@ test('expired archived shared payment renews the same order without replacing th
  const newCart=[{product:'prod_rice-2',variant:null,quantity:3}]
  setState(jid,{cart:newCart,step:'browse',orders:[old]})
  const original=globalThis.fetch
- globalThis.fetch=async(url,opts)=>{const b=JSON.parse(opts.body);assert.equal(b.requestId,old.id);assert.equal(b.sessionId,old.session);return {ok:true,json:async()=>({sessionId:'cs_test_renewed',url:'https://checkout.stripe.com/new',orderNumber:old.orderNumber,total:700,deliveryFee:500})}}
+ globalThis.fetch=async(url,opts)=>{const b=JSON.parse(opts.body);assert.equal(b.requestId,old.id);assert.equal(b.sessionId,old.session);return Response.json({sessionId:'cs_test_renewed',url:'https://checkout.stripe.com/new',orderNumber:old.orderNumber,total:700,deliveryFee:500})}
  try {await tap('resume_payment_'+old.id);assert.equal(getState(jid).orders[0].session,'cs_test_renewed');assert.deepEqual(getState(jid).cart,newCart);assert.equal(getState(jid).step,'browse')}
  finally {globalThis.fetch=original;process.env.BOT_CHECKOUT_SECRET=''}
 })
@@ -163,7 +176,7 @@ test('automatic verification retries failed notifications and preserves a newer 
  const cart=[{product:'prod_rice-2',variant:null,quantity:2}]
  setState(jid,{cart,step:'browse',orders:[old]})
  const original=globalThis.fetch
- globalThis.fetch=async()=>({ok:true,json:async()=>({paid:true,state:'paid',botOrder:old.id,orderNumber:old.orderNumber,total:700})})
+ globalThis.fetch=async()=>Response.json({paid:true,state:'paid',botOrder:old.id,orderNumber:old.orderNumber,total:700})
  let attempts=0
  const flaky={sendMessage:async(to,content)=>{if(to===jid && ++attempts===1)throw new Error('offline');sent.push({to,...content})}}
  try {
@@ -181,7 +194,7 @@ test('connected monitor resumes pending payments and restart does not repeat ack
  const order={id:'monitor-order',session:'cs_test_monitor',orderNumber:'DG-WA-monitor-order',sharedCheckout:true,status:'awaiting_payment',total:700,items:priceCart([{product:'prod_rice-1',variant:null,quantity:1}])}
  setState(jid,{cart:[],step:'menu',order})
  const original=globalThis.fetch
- globalThis.fetch=async()=>({ok:true,json:async()=>({paid:true,state:'paid',botOrder:order.id,orderNumber:order.orderNumber,total:700})})
+ globalThis.fetch=async()=>Response.json({paid:true,state:'paid',botOrder:order.id,orderNumber:order.orderNumber,total:700})
  let stop=()=>{}
  try {
   await new Promise((resolve,reject)=>{

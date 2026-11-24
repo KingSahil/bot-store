@@ -30,7 +30,17 @@ A leading `+` and phone formatting spaces are accepted; digits-only numbers are 
 
 ## Catalogue contract
 
-By default all bots read the configured shared product snapshot. Unclassified products belong only to Normal stock. Explicit `stock_board` values are `normal`, `preorder` and `wholesale`. Filtering applies to categories, search, direct product IDs, add-to-cart and order repricing. An unknown board is excluded from all bots. A dedicated JSON file must still classify its products correctly.
+Client clarification, 19 November 2026: Wholesale will offer the same items in bulk. The client will supply wholesale prices and quantities later. Treat those offers as awaiting pricing until the pack sizes, minimum quantities and selling prices are provided.
+
+Both special-board bots load the November drinks and supplier catalogue previews by default. Supplier previews retain their source document references and use photos from the DeepGlobal checkout. Their selling prices, pack sizes and availability are pending store confirmation. Wholesale also reads the website catalogue snapshot at `src/lib/data/products.json` in the DeepGlobal checkout. An exact normalized title match keeps the supplier listing. Wholesale listings use their own IDs and customer state and show bulk prices and quantities as coming soon. Use `WHOLESALE_PRODUCTS_JSON_PATH` in `config/wholesale.env` to replace the default combined catalogue with confirmed bulk offers.
+
+Liquor contains the 144 alcoholic products. Non-alcoholic drinks contains soda water and the two Heineken 0.0 entries. Product photos load from the DeepGmart public folder and are encoded as JPEG for WhatsApp delivery.
+
+Normal and Wholesale read the configured product snapshot. Unclassified products belong only to Normal stock. Pre-order uses the bundled November supplier catalogue by default. Set `PREORDER_PRODUCTS_JSON_PATH` in the pre-order profile to override it. The older `PRODUCTS_JSON_PATH` setting is also supported.
+
+The bundled list adds S$5 to each supplier price per bottle or carton, including each quantity tier. The bot recalculates the tier using the total quantity of each product in the cart. The October APBS promotion rates are excluded. The regular APBS carton rates are listed before GST and BCRS deposit and are subject to confirmation. The store confirms charges, arrival and supplier gifts when it reviews a request. Jim Beam 200ml is marked unavailable.
+
+Explicit `stock_board` values are `normal`, `preorder` and `wholesale`. Filtering applies to categories, search, direct product IDs, add-to-cart and order repricing. An unknown board is excluded from all bots. A dedicated JSON file must still classify its products correctly.
 
 Wholesale example (quantity is packs; price is per pack in SGD cents):
 
@@ -64,9 +74,11 @@ An optional `preorder.cutoff` is an ISO timestamp with timezone. Expired or inva
 
 ## Orders and payments
 
-Normal stock retains existing shared website checkout and optional COD. Pre-order and Wholesale currently accept unpaid **Request confirmation** orders only, requiring `ADMIN_JID`. Online/COD actions are blocked even if a customer sends a forged button reply. The administrator receives the board, price, quantity and terms; the order retains its board and terms snapshot. Delivery totals for these requests are estimates using the existing delivery configuration; the store confirms the final delivery charge before payment.
+Normal stock uses shared website checkout and optional cash on delivery. The Pre-order bot requires full advance payment through the same Stripe checkout. The website validates the published Pre-order price tier and delivery fee before creating a payment link. Listings with pending selling prices remain browse-only.
 
-The website does not yet have the planned board/offer backend. Special-board requests do not reserve inventory or establish guaranteed allocations. Automatic special-board payments require the website offer model, authoritative pricing, delivery rules and reservations described in `three-stock-boards-plan.md`. Retail payment status monitoring continues normally. Product cards link to the existing website product page; special-board ordering is handled in WhatsApp, not by the website product page.
+Deploy the updated website API before starting the updated Pre-order bot. Both use the existing `BOT_CHECKOUT_SECRET`. Set `WHATSAPP_PREORDER_BOT_NUMBER` on the website to enable the return link from payment confirmation to the Pre-order bot. Allow 7–10 days for delivery after store confirmation.
+
+Wholesale pricing, pack sizes and minimum quantities are pending. The website's Wholesale section combines supplier and shop listings. Run `node scripts/sync-website-wholesale.mjs` after changes to that catalogue.
 
 ## Operations
 

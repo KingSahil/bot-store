@@ -11,9 +11,15 @@ export async function sharedCheckout(body = null, sessionId = null) {
   const response = await fetch(endpoint, {
     method: body ? 'POST' : 'GET',
     headers: { Authorization: `Bearer ${process.env.BOT_CHECKOUT_SECRET}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
-    ...(body ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(20000),
+    ...(body ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(20000), redirect: 'manual',
   })
-  const data = await response.json()
-  if (!response.ok) throw new Error(data.error || 'Payment service is unavailable. Your order is saved. Please try again.')
+  const unavailable = 'Online payment is temporarily unavailable. Your cart is saved. Please try again later.'
+  if (!response.headers.get('content-type')?.includes('application/json')) {
+    console.warn(`[checkout] ${endpoint.origin} returned HTTP ${response.status} without a checkout response.`)
+    throw new Error(unavailable)
+  }
+  const data = await response.json().catch(() => null)
+  if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error(unavailable)
+  if (!response.ok) throw new Error(response.status < 500 && typeof data.error === 'string' ? data.error : unavailable)
   return data
 }

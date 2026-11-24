@@ -145,7 +145,16 @@ async function startBot() {
       creds: state.creds,
       keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'silent' })),
     },
-    logger: pino({ level: 'silent' }),
+    logger: pino({ level: 'debug' }, {
+      write(line) {
+        const { msg } = JSON.parse(line);
+        if (msg === '[handleMessage] Attempting retry request for failed decryption') {
+          console.log('WhatsApp could not decrypt an incoming message and requested a resend.');
+        } else if (msg === 'error in handling message') {
+          console.log('WhatsApp reported an error while receiving a message.');
+        }
+      },
+    }),
     msgRetryCounterCache,
     getMessage: async (key) => {
       if (key?.id && messageStore.has(key.id)) {
@@ -158,6 +167,14 @@ async function startBot() {
   activeSocket = sock;
   let closed = false;
   wrapSendMessageGlobally(sock);
+
+  sock.ws.prependListener('CB:message', (node) => {
+    if (activeSocket !== sock || closed || shuttingDown) return;
+    if (node.attrs?.offline) newMessages.recordQueuedFrame(node.attrs.id, Number(node.attrs.t));
+    if (process.env.BOT_RECEIVE_DEBUG === 'true') {
+      console.log(`WhatsApp delivered a message frame (${node.attrs?.offline ? 'offline queue' : 'live'}).`);
+    }
+  });
 
   sock.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect, qr } = update;
@@ -212,7 +229,17 @@ async function startBot() {
   sock.ev.on('messages.upsert', async m => {
     if (activeSocket !== sock || closed || shuttingDown) return;
     for (const msg of m.messages || []) {
-      if (!newMessages.accepts(m.type, msg)) continue;
+      if (process.env.BOT_RECEIVE_DEBUG === 'true') {
+        console.log(`WhatsApp message event (${m.type}, ${msg?.key?.fromMe ? 'own account' : 'incoming'}, ${msg?.message ? 'content present' : 'no readable content'}).`);
+      }
+      if (!newMessages.accepts(m.type, msg)) {
+        if (m.type === 'notify' && /@(?:lid|s\.whatsapp\.net)$/.test(msg?.key?.remoteJid || '')) {
+          console.log(msg.key.fromMe
+            ? 'Skipped a message sent from the bot’s own account.'
+            : 'Skipped an incoming WhatsApp event without fresh, readable message content.');
+        }
+        continue;
+      }
 
       // Save message to store for retry support
       if (msg.key?.id && msg.message) {
@@ -239,8 +266,18 @@ async function startBot() {
 
       // Resolve LID to the user's real phone number JID
       const phoneJid = rawFrom.endsWith('@lid') && msg.key.remoteJidAlt?.endsWith('@s.whatsapp.net') ? msg.key.remoteJidAlt : rawFrom;
-      const from = resolveLidToPn(phoneJid);
-      if (!isSenderAllowed(from, botConfig.allowedNumbers)) continue;
+      let from = resolveLidToPn(phoneJid);
+      if (from?.endsWith('@lid')) {
+        const mapped = await sock.signalRepository.lidMapping.getPNForLID(from).catch(() => null);
+        if (mapped?.endsWith('@s.whatsapp.net')) from = jidNormalizedUser(mapped);
+      }
+      if (!isSenderAllowed(from, botConfig.allowedNumbers)) {
+        console.log(from?.endsWith('@lid')
+          ? 'Skipped a new message because WhatsApp did not provide a verifiable sender number.'
+          : 'Skipped a new message from a number outside ALLOWED_NUMBERS.');
+        continue;
+      }
+      if (activeSocket !== sock || closed || shuttingDown) return;
 
       const userText = (
         msg.message?.conversation ||

@@ -24,7 +24,7 @@ export function resolveLidToPn(jid) {
     const reverseFile = path.join(botConfig.authDir, `lid-mapping-${lidUser}_reverse.json`)
     if (fs.existsSync(reverseFile)) {
       const pn = JSON.parse(fs.readFileSync(reverseFile, 'utf8'))
-      if (pn) {
+      if (/^\d{7,15}$/.test(String(pn))) {
         const resolved = jidNormalizedUser(`${pn}@s.whatsapp.net`)
         lidCache.set(lidUser, resolved)
         return resolved
@@ -39,9 +39,10 @@ export function resolveLidToPn(jid) {
       const files = fs.readdirSync(sessionDir)
       for (const file of files) {
         if (file.startsWith('lid-mapping-') && !file.includes('_reverse') && file.endsWith('.json')) {
-          const content = fs.readFileSync(path.join(sessionDir, file), 'utf8').trim()
-          if (content.includes(lidUser)) {
-            const pn = file.replace('lid-mapping-', '').replace('.json', '')
+          const pn = /^lid-mapping-(\d{7,15})\.json$/.exec(file)?.[1]
+          if (!pn) continue
+          const mappedLid = JSON.parse(fs.readFileSync(path.join(sessionDir, file), 'utf8'))
+          if (String(mappedLid) === lidUser) {
             const resolved = jidNormalizedUser(`${pn}@s.whatsapp.net`)
             lidCache.set(lidUser, resolved)
             return resolved
