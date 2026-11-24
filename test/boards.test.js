@@ -97,6 +97,14 @@ test('matched supplier prices become pre-order offers for the printed selling un
   assert.equal(boardTerms(drinks, 'preorder').price, 1450)
   assert.equal(drinks.preorder.unit, 'carton')
   assert.equal(drinks.preorder.pack, '24 drinks per carton')
+  const noodles = preorderCatalogue.find(product => product.slug === 'preorder-supplier-tge-018-01')
+  assert.equal(noodles.preorder.unit, 'carton')
+  assert.equal(noodles.preorder.pack, '12 multipacks of 5 noodle packs per carton')
+  assert.deepEqual(noodles.preorder.priceTiers, [
+    { quantity: 1, price: 1600 },
+    { quantity: 21, price: 1580 },
+    { quantity: 50, price: 1550 },
+  ])
 })
 
 test('named instances have distinct session/state paths and validate configuration', () => {

@@ -362,7 +362,7 @@ function supplierProduct(product) {
       arrival: 'Allow 7–10 days for delivery after store confirmation',
       unit: offer.unit,
       ...(offer.pack ? { pack: offer.pack } : {}),
-      priceTiers: [{ quantity: 1, price: offer.price }],
+      priceTiers: [{ quantity: 1, price: offer.price }, ...(offer.quantityPrices || [])],
       terms: [`Selling unit: ${offer.unit}.`, offer.pack && `${offer.pack}.`, 'Advance payment required.'].filter(Boolean).join(' '),
     } : { pricing_pending: true },
   }
