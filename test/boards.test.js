@@ -93,6 +93,10 @@ test('matched supplier prices become pre-order offers for the printed selling un
   assert.equal(boardTerms(babyWipes, 'preorder').price, 90)
   const disputed = preorderCatalogue.find(product => product.slug === 'preorder-supplier-winthree-9')
   assert.equal(boardTerms(disputed, 'preorder').pricingPending, true)
+  const drinks = preorderCatalogue.find(product => product.slug === 'preorder-supplier-tge-023-03')
+  assert.equal(boardTerms(drinks, 'preorder').price, 1450)
+  assert.equal(drinks.preorder.unit, 'carton')
+  assert.equal(drinks.preorder.pack, '24 drinks per carton')
 })
 
 test('named instances have distinct session/state paths and validate configuration', () => {

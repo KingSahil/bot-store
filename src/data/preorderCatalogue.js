@@ -6,6 +6,7 @@ import { mergedSupplierPrice } from './mergedSupplierPrices.js'
 import winthreePrices from './winthreePrices.json' with { type: 'json' }
 import mullaiPrices from './mullaiReferencePrices.json' with { type: 'json' }
 import babaPrices from './babaReferencePrices.json' with { type: 'json' }
+import matchedSupplierOffers from './matchedSupplierOffers.json' with { type: 'json' }
 
 // November supplier list. Values here are supplier SGD prices.
 // Columns: product | unit | quantity:price tiers | optional supplier conditions.
@@ -334,6 +335,7 @@ for (const product of [...supplierPreview, ...spmSupplierPreview, ...extraSuppli
 }
 
 function supplierOffer(slug) {
+  if (Object.hasOwn(matchedSupplierOffers, slug)) return matchedSupplierOffers[slug]
   const row = /^winthree-(\d+)$/.exec(slug)
   const winthree = row && winthreePrices.find(price => price.row === Number(row[1]))
   if (winthree) return winthree.totalsAgree
@@ -359,8 +361,9 @@ function supplierProduct(product) {
       accepting_orders: true,
       arrival: 'Allow 7–10 days for delivery after store confirmation',
       unit: offer.unit,
+      ...(offer.pack ? { pack: offer.pack } : {}),
       priceTiers: [{ quantity: 1, price: offer.price }],
-      terms: `Selling unit: ${offer.unit}. Advance payment required.`,
+      terms: [`Selling unit: ${offer.unit}.`, offer.pack && `${offer.pack}.`, 'Advance payment required.'].filter(Boolean).join(' '),
     } : { pricing_pending: true },
   }
 }

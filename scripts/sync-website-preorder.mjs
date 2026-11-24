@@ -21,6 +21,7 @@ const rows = preorderCatalogue.map(product => {
     title: product.title,
     category: product.dept,
     unit: listing.unit || '',
+    ...(product.preorder.pack ? { pack: product.preorder.pack } : {}),
     photo,
     available: listing.available,
     tiers: listing.priceTiers || [],
