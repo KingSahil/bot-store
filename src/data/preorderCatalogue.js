@@ -352,6 +352,7 @@ function supplierProduct(product) {
   const offer = supplierOffer(product.slug)
   return {
     ...product,
+    ...(offer?.retailSize ? { title: `${product.title} — ${offer.retailSize}` } : {}),
     id: slug,
     slug,
     stock_board: 'preorder',
