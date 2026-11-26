@@ -1,5 +1,6 @@
 // src/features/orderHandler.js
 import { getProductBySlug, getProductImageBuffer, STORE_URL } from '../data/deepgmart.js'
+import { wholesaleContact } from './storeMenu.js'
 
 export async function showProductDetail(sock, from, productId, quotedMsg = null) {
   const product = getProductBySlug(productId)
@@ -16,7 +17,7 @@ export async function showProductDetail(sock, from, productId, quotedMsg = null)
     `💰 Price: *${product.price}${product.unit ? ` per ${product.unit}` : ''}*\n` +
     `📁 Category: *${(product.dept || 'Grocery').toUpperCase()}*\n\n` +
     `📝 ${product.desc}\n\n` +
-    (product.pricingPending ? 'The store will publish ordering details here.' : product.available ? '👇 *Choose Add to cart to select quantity:*' : 'Please check back for availability.')
+    (product.board === 'wholesale' ? wholesaleContact : product.pricingPending ? 'The store will publish ordering details here.' : product.available ? '👇 *Choose Add to cart to select quantity:*' : 'Please check back for availability.')
 
   const message = {
     footer: `© DeepGmart Singapore • ${STORE_URL}`,

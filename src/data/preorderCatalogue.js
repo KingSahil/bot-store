@@ -1,4 +1,5 @@
 import supplierPreview from './supplierPreview.json' with { type: 'json' }
+import balajiSupplierPreview from './balajiSupplierPreview.json' with { type: 'json' }
 import spmSupplierPreview from './spmSupplierPreview.json' with { type: 'json' }
 import extraSupplierPreview from './extraSupplierPreview.json' with { type: 'json' }
 import remainingSupplierPreview from './remainingSupplierPreview.json' with { type: 'json' }
@@ -319,7 +320,7 @@ function offer(title, unit, tiers, notes = '', status) {
 }
 
 const supplierListings = new Map()
-for (const product of [...supplierPreview, ...spmSupplierPreview, ...extraSupplierPreview, ...remainingSupplierPreview]) {
+for (const product of [...supplierPreview, ...spmSupplierPreview, ...extraSupplierPreview, ...remainingSupplierPreview, ...balajiSupplierPreview]) {
   const key = product.title.normalize('NFKD').toLowerCase()
     .replace(/(?<=\d)\s*(?:gms?|gr)\b/g, 'g')
     .replace(/(?<=\d)\s*ltrs?\b/g, 'l')
