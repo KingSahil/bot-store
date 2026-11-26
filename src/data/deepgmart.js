@@ -97,7 +97,7 @@ function describeProduct(product) {
     ? cartonReference || unitReference : unitReference || cartonReference
   const pendingPrice = listedReference ? `Supplier list ${listedReference}` : referencePrice
     ? `Supplier list ${formatPrice(referencePrice)} · Selling price pending`
-    : botConfig.mode === 'wholesale' ? 'Wholesale price coming soon' : 'Pre-order price coming soon'
+    : botConfig.mode === 'wholesale' ? 'Wholesale price coming soon' : 'Contact on WhatsApp for price'
   // Special-board offers currently support single-SKU products only.
   if (botConfig.mode !== 'normal' && product.variants?.length) return null
 

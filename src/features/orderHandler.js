@@ -11,13 +11,16 @@ export async function showProductDetail(sock, from, productId, quotedMsg = null)
 
   const buffer = await getProductImageBuffer(product.imageRelative)
 
-  const caption = 
+  const preorderContactUrl = product.board === 'preorder' && !product.available
+    ? `https://wa.me/6581710548?text=${encodeURIComponent(`Hi DeepGmart, could you confirm the price and availability for pre-ordering ${product.title}?`)}`
+    : null
+  const caption =
     `🛍️ *${product.title}*\n` +
     `${product.pricingPending ? (product.board === 'wholesale' ? 'Bulk catalogue — prices and quantities coming soon' : 'Pre-order catalogue — price and availability pending') : product.board === 'preorder' ? (product.available ? 'Pre-orders open — awaiting arrival' : 'Pre-orders closed') : product.available ? '✅ In stock' : 'Currently out of stock'}\n` +
     `💰 Price: *${product.price}${product.unit ? ` per ${product.unit}` : ''}*\n` +
     `📁 Category: *${(product.dept || 'Grocery').toUpperCase()}*\n\n` +
     `📝 ${product.desc}\n\n` +
-    (product.board === 'wholesale' ? wholesaleContact : product.pricingPending ? 'The store will publish ordering details here.' : product.available ? '👇 *Choose Add to cart to select quantity:*' : 'Please check back for availability.')
+    (product.board === 'wholesale' ? wholesaleContact : preorderContactUrl ? `Contact on WhatsApp: ${preorderContactUrl}` : product.available ? '👇 *Choose Add to cart to select quantity:*' : 'Please check back for availability.')
 
   const message = {
     footer: `© DeepGmart Singapore • ${STORE_URL}`,
@@ -28,6 +31,10 @@ export async function showProductDetail(sock, from, productId, quotedMsg = null)
           display_text: '🛒 Add to cart',
           id: `add_${product.id}`,
         }),
+      }] : []),
+      ...(preorderContactUrl ? [{
+        name: 'cta_url',
+        buttonParamsJson: JSON.stringify({ display_text: 'Contact on WhatsApp', url: preorderContactUrl }),
       }] : []),
       ...(product.url ? [{
         name: 'cta_url',
